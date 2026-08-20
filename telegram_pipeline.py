@@ -42,6 +42,22 @@ def load_state():
 def save_state(st):
     json.dump(st, open(STATE_FILE, 'w'))
 
+def commit_state():
+    """Push state.json back to the repo so the next run resumes exactly here.
+    Uses GITHUB_TOKEN (auto-provided in Actions)."""
+    gh = os.environ.get('GITHUB_TOKEN', '')
+    if not gh:
+        return
+    subprocess.run(['git', 'config', 'user.name', 'video-autopost-bot'], capture_output=True)
+    subprocess.run(['git', 'config', 'user.email', 'video-autopost-bot@users.noreply.github.com'], capture_output=True)
+    subprocess.run(['git', 'add', STATE_FILE], capture_output=True)
+    r = subprocess.run(['git', 'diff', '--cached', '--quiet'], capture_output=True)
+    if r.returncode != 0:
+        subprocess.run(['git', 'commit', '-m', 'state: ' + __import__('datetime').datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')], capture_output=True)
+        p = subprocess.run(['git', 'push', 'https://x-access-token:' + gh + '@github.com/sameer-sys/video-autopost.git', 'main'],
+                           capture_output=True, text=True)
+        print('state pushed' if p.returncode == 0 else 'state push failed: ' + p.stderr[-200:])
+
 def download_telegram_file(file_id, dest):
     j = api('getFile', {'file_id': file_id})
     path = j['result']['file_path']
@@ -151,6 +167,7 @@ def main():
                 api('sendMessage', {'chat_id': CHAT_ID, 'text': text, 'parse_mode': 'Markdown'})
                 st['done'].append(uid)
                 print('replied to video', uid)
+                commit_state()   # durable progress after EVERY video
             except Exception as e:
                 print('ERROR on update', uid, ':', e)
                 try:
