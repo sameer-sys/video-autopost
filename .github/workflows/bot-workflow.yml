@@ -1,0 +1,35 @@
+name: Video Autopost 24/7
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'   # every 5 minutes, 24/7, runs in GitHub's free cloud
+  workflow_dispatch:        # manual "Run workflow" button
+
+permissions:
+  contents: write           # needed to commit state.json back
+
+jobs:
+  bot-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Telegram pipeline
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+          GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
+          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+        run: python3 telegram_pipeline.py
+
+      - name: Commit state back (idempotency)
+        run: |
+          git config user.name "video-autopost-bot"
+          git config user.email "video-autopost-bot@users.noreply.github.com"
+          git add state.json
+          git diff --cached --quiet || git commit -m "state: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git push origin main
