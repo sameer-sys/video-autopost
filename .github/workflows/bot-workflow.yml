@@ -16,6 +16,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       - name: Run Telegram pipeline
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
