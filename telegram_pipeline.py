@@ -75,6 +75,7 @@ def upscale(src, dst):
     subprocess.run(cmd, check=True)
 
 def gemini_package():
+    import time
     body = {
         "contents": [{"parts": [{"text": (
             "Write a viral social media caption package for a short vertical video. "
@@ -83,15 +84,32 @@ def gemini_package():
             "hashtags (array of 12 trending tags). No markdown, no code fences."
         )}]}]
     }
-    req = urllib.request.Request(
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=' + GEMINI_KEY,
-        data=json.dumps(body).encode(), headers={'Content-Type': 'application/json'})
-    with urllib.request.urlopen(req, timeout=90) as r:
-        j = json.load(r)
-    cands = j.get('candidates') or []
-    if not cands:
-        raise RuntimeError('no candidates: ' + json.dumps(j.get('promptFeedback', {})))
-    return cands[0]['content']['parts'][0]['text']
+    last_err = None
+    for attempt in range(4):  # free tier is flaky: retry with backoff
+        try:
+            req = urllib.request.Request(
+                'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=' + GEMINI_KEY,
+                data=json.dumps(body).encode(), headers={'Content-Type': 'application/json'})
+            with urllib.request.urlopen(req, timeout=90) as r:
+                j = json.load(r)
+            cands = j.get('candidates') or []
+            if not cands:
+                raise RuntimeError('no candidates: ' + json.dumps(j.get('promptFeedback', {})))
+            return cands[0]['content']['parts'][0]['text']
+        except Exception as e:
+            last_err = e
+            print('gemini attempt', attempt + 1, 'failed:', e)
+            time.sleep(5 * (attempt + 1))
+    raise last_err
+
+def fallback_package():
+    return {
+        'title': 'Watch This! #shorts',
+        'description': 'Amazing video you need to see! Follow for more daily content.',
+        'captions': ['Watch till the end!', 'You will love this!', 'Follow for more!'],
+        'hashtags': ['#shorts', '#viral', '#trending', '#fyp', '#reels', '#explore',
+                     '#video', '#daily', '#amazing', '#mustwatch', '#foryou', '#new'],
+    }
 
 def parse_package(raw):
     raw = re.sub(r'^```(json)?|```$', '', raw.strip(), flags=re.M).strip()
@@ -119,6 +137,7 @@ def yt_access_token():
         return json.load(r)['access_token']
 
 def yt_upload(video_path, pkg):
+    import time
     access = yt_access_token()
     size = os.path.getsize(video_path)
     meta = json.dumps({
@@ -132,10 +151,19 @@ def yt_upload(video_path, pkg):
                  'X-Upload-Content-Length': str(size), 'X-Upload-Content-Type': 'video/mp4'})
     with urllib.request.urlopen(req, timeout=60) as r:
         loc = r.headers['Location']
-    req = urllib.request.Request(loc, data=open(video_path, 'rb').read(), method='PUT',
-                                 headers={'Content-Type': 'video/mp4'})
-    with urllib.request.urlopen(req, timeout=600) as r:
-        return json.load(r)['id']
+    data = open(video_path, 'rb').read()
+    last_err = None
+    for attempt in range(4):  # resumable PUT can 503: retry
+        try:
+            req = urllib.request.Request(loc, data=data, method='PUT',
+                                         headers={'Content-Type': 'video/mp4'})
+            with urllib.request.urlopen(req, timeout=600) as r:
+                return json.load(r)['id']
+        except Exception as e:
+            last_err = e
+            print('upload attempt', attempt + 1, 'failed:', e)
+            time.sleep(5 * (attempt + 1))
+    raise last_err
 
 def main():
     if not all([TOKEN, CHAT_ID, GEMINI_KEY, YT_CLIENT_ID, YT_CLIENT_SECRET, YT_REFRESH]):
@@ -157,9 +185,13 @@ def main():
                 print('downloaded', size)
                 upscale(src, hd)
                 print('upscaled ok')
-                raw = gemini_package()
-                pkg = parse_package(raw)
-                print('captions ok:', pkg['title'])
+                try:
+                    raw = gemini_package()
+                    pkg = parse_package(raw)
+                    print('captions ok:', pkg['title'])
+                except Exception as e:
+                    print('gemini failed, using fallback:', e)
+                    pkg = fallback_package()
                 vid_id = yt_upload(hd, pkg)
                 link = f"https://youtube.com/shorts/{vid_id}"
                 print('UPLOADED', link)
