@@ -165,8 +165,23 @@ def yt_upload(video_path, pkg):
             time.sleep(5 * (attempt + 1))
     raise last_err
 
+def yt_update_meta(video_id, title, description, tags):
+    """Apply Claude-written captions sent as a Telegram text message.
+    First line of the message = video title, rest = description."""
+    access = yt_access_token()
+    meta = json.dumps({
+        'id': video_id,
+        'snippet': {'title': title[:100], 'description': description,
+                    'tags': tags, 'categoryId': '24'}}).encode()
+    req = urllib.request.Request(
+        'https://www.googleapis.com/youtube/v3/videos?part=snippet',
+        data=meta, method='PUT',
+        headers={'Authorization': 'Bearer ' + access, 'Content-Type': 'application/json'})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return json.load(r)['id']
+
 def main():
-    if not all([TOKEN, CHAT_ID, GEMINI_KEY, YT_CLIENT_ID, YT_CLIENT_SECRET, YT_REFRESH]):
+    if not all([TOKEN, CHAT_ID, YT_CLIENT_ID, YT_CLIENT_SECRET, YT_REFRESH]):
         print('MISSING_ENV'); sys.exit(0)
     import time as _t
     st = load_state()
@@ -188,6 +203,31 @@ def main():
         uid = u['update_id']
         m = u.get('message') or u.get('channel_post') or {}
         st['offset'] = uid + 1
+        # text message = Claude-written captions for the last uploaded video
+        txt = (m.get('text') or '').strip()
+        if txt and not txt.startswith('/'):
+            last_vid = st.get('last_video_id')
+            if not last_vid:
+                api('sendMessage', {'chat_id': CHAT_ID,
+                    'text': 'Send a video first, then paste your captions to update it.'})
+            else:
+                lines = txt.split('\n', 1)
+                title = lines[0].strip()[:100]
+                desc = lines[1].strip() if len(lines) > 1 else ''
+                tags = [w.lstrip('#') for w in (title + ' ' + desc).split() if w.startswith('#')]
+                try:
+                    yt_update_meta(last_vid, title, desc, tags)
+                    api('sendMessage', {'chat_id': CHAT_ID,
+                        'text': '\u2705 Captions applied!\n\n' + title +
+                                '\n\nhttps://youtube.com/shorts/' + last_vid})
+                    print('captions applied to', last_vid)
+                except Exception as e:
+                    print('caption update error:', e)
+                    api('sendMessage', {'chat_id': CHAT_ID,
+                        'text': f'\u274c Caption update failed: {e}'})
+                commit_state()
+            save_state(st)
+            continue
         vid = m.get('video')
         if vid and uid not in st['done']:
             try:
@@ -197,14 +237,19 @@ def main():
                 print('downloaded', size)
                 upscale(src, hd)
                 print('upscaled ok')
-                try:
-                    raw = gemini_package()
-                    pkg = parse_package(raw)
-                    print('captions ok:', pkg['title'])
-                except Exception as e:
-                    print('gemini failed, using fallback:', e)
+                if GEMINI_KEY:
+                    try:
+                        raw = gemini_package()
+                        pkg = parse_package(raw)
+                        print('captions ok:', pkg['title'])
+                    except Exception as e:
+                        print('gemini failed, using fallback:', e)
+                        pkg = fallback_package()
+                else:
+                    print('gemini disabled, using default captions')
                     pkg = fallback_package()
                 vid_id = yt_upload(hd, pkg)
+                st['last_video_id'] = vid_id   # target for caption updates
                 link = f"https://youtube.com/shorts/{vid_id}"
                 print('UPLOADED', link)
                 text = format_package(pkg) + f"\n\n\U0001F517 {link}"
