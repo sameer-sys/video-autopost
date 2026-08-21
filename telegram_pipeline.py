@@ -168,7 +168,19 @@ def yt_upload(video_path, pkg):
 def main():
     if not all([TOKEN, CHAT_ID, GEMINI_KEY, YT_CLIENT_ID, YT_CLIENT_SECRET, YT_REFRESH]):
         print('MISSING_ENV'); sys.exit(0)
+    import time as _t
     st = load_state()
+    # heartbeat: >=1 commit/day keeps the repo 'active' so GitHub never
+    # auto-disables the schedule during long breaks from posting
+    try:
+        last_beat = float(st.get('last_beat', 0))
+    except Exception:
+        last_beat = 0
+    if _t.time() - last_beat > 86400:
+        st['last_beat'] = _t.time()
+        save_state(st)
+        commit_state()
+        print('heartbeat committed')
     j = api('getUpdates', {'offset': st['offset'], 'timeout': 1})
     updates = j.get('result', [])
     print('updates:', len(updates))
