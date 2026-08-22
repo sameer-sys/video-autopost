@@ -5,13 +5,20 @@ video from bot -> download -> upscale to 1080x1920 HD -> Gemini viral captions
 State (processed update ids) is committed back to the repo so runs are idempotent."""
 import json, os, re, sys, subprocess, urllib.request, urllib.parse, html
 
+import fb_ig
+
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 CHAT_ID = os.environ.get('CHAT_ID', '')
 GEMINI_KEY = os.environ.get('GEMINI_KEY', '')
 YT_CLIENT_ID = os.environ.get('YT_CLIENT_ID', '')
 YT_CLIENT_SECRET = os.environ.get('YT_CLIENT_SECRET', '')
 YT_REFRESH = os.environ.get('YT_REFRESH_TOKEN', '')
+FB_PAGE_TOKEN = os.environ.get('FB_PAGE_TOKEN', '')
+FB_PAGE_ID = os.environ.get('FB_PAGE_ID', '')
+IG_USER_ID = os.environ.get('IG_USER_ID', '')
 STATE_FILE = 'state.json'
+PLACEHOLDER_CAPTION = ('🎬 New ToonPop World drop! Follow for daily cartoons 🍿\n'
+                       '#cartoon #animation #reels #shorts #funny #toonpopworld')
 
 def api(method, params=None, files=None):
     url = f'https://api.telegram.org/bot{TOKEN}/{method}'
@@ -217,9 +224,18 @@ def main():
                 tags = [w.lstrip('#') for w in (title + ' ' + desc).split() if w.startswith('#')]
                 try:
                     yt_update_meta(last_vid, title, desc, tags)
+                    fb_note = ''
+                    fb_vid = st.get('last_fb_video_id')
+                    if FB_PAGE_TOKEN and fb_vid:
+                        try:
+                            fb_ig.fb_update_description(fb_vid, FB_PAGE_TOKEN,
+                                                        title, desc)
+                            fb_note = '\n📘 Facebook description updated'
+                        except Exception as e:
+                            print('fb desc update failed:', e)
                     api('sendMessage', {'chat_id': CHAT_ID,
                         'text': '\u2705 Captions applied!\n\n' + title +
-                                '\n\nhttps://youtube.com/shorts/' + last_vid})
+                                '\n\nhttps://youtube.com/shorts/' + last_vid + fb_note})
                     print('captions applied to', last_vid)
                 except Exception as e:
                     print('caption update error:', e)
@@ -250,10 +266,37 @@ def main():
                     pkg = fallback_package()
                 vid_id = yt_upload(hd, pkg)
                 st['last_video_id'] = vid_id   # target for caption updates
-                link = f"https://youtube.com/shorts/{vid_id}"
-                print('UPLOADED', link)
-                text = format_package(pkg) + f"\n\n\U0001F517 {link}"
-                api('sendMessage', {'chat_id': CHAT_ID, 'text': text, 'parse_mode': 'Markdown'})
+                links = ['🎬 https://youtube.com/shorts/' + vid_id]
+                print('UPLOADED yt', vid_id)
+                # Facebook Page Reel (skipped silently if secrets missing)
+                if FB_PAGE_TOKEN and FB_PAGE_ID:
+                    try:
+                        fb_link = fb_ig.fb_reel_upload(hd, FB_PAGE_TOKEN,
+                                                       FB_PAGE_ID,
+                                                       PLACEHOLDER_CAPTION)
+                        st['last_fb_video_id'] = re.sub(r'[^0-9]', '',
+                                                        fb_link.rstrip('/').split('/')[-1]) or None
+                        links.append('📘 ' + fb_link)
+                        print('UPLOADED fb', fb_link)
+                    except Exception as e:
+                        print('fb upload failed:', e)
+                        links.append('📘 failed: ' + str(e)[:80])
+                # Instagram Reel (skipped silently if secrets missing)
+                if FB_PAGE_TOKEN and IG_USER_ID:
+                    try:
+                        tg = api('getFile', {'file_id': vid['file_id']})
+                        tg_url = ('https://api.telegram.org/file/bot' + TOKEN +
+                                  '/' + tg['result']['file_path'])
+                        ig_link = fb_ig.ig_reel_publish(hd, IG_USER_ID,
+                                                        FB_PAGE_TOKEN,
+                                                        PLACEHOLDER_CAPTION,
+                                                        telegram_file_url=tg_url)
+                        links.append('📸 ' + ig_link)
+                        print('UPLOADED ig', ig_link)
+                    except Exception as e:
+                        print('ig upload failed:', e)
+                        links.append('📸 failed: ' + str(e)[:80])
+                api('sendMessage', {'chat_id': CHAT_ID, 'text': '\n'.join(links)})
                 st['done'].append(uid)
                 print('replied to video', uid)
                 commit_state()   # durable progress after EVERY video
