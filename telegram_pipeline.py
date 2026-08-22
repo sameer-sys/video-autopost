@@ -172,6 +172,30 @@ def yt_upload(video_path, pkg):
             time.sleep(5 * (attempt + 1))
     raise last_err
 
+def parse_caption_update(txt):
+    """Flexible parser for pasted caption packages (from Claude or written by hand).
+    Supports two formats:
+      1. Labeled:  Title: ... / Description: ... (Captions:/Hashtags: sections ignored)
+      2. Plain:    first line = title, everything after = description
+    Markdown asterisks are stripped; hashtags are collected from the whole text."""
+    t = re.sub(r'\*+', '', txt.strip())          # strip markdown bold/italics
+    ti = re.search(r'^\s*(?:yt\s+)?title\s*[:\-]\s*(.+)$', t, flags=re.M | re.I)
+    if ti:
+        title = ti.group(1).strip()
+        di = re.search(r'^\s*(?:description|desc|caption)\s*[:\-]\s*(.+)$',
+                       t[ti.end():], flags=re.M | re.I | re.S)
+        if di:
+            desc = di.group(1).strip()
+        else:
+            desc = t[ti.end():].strip()
+        # cut the description where the next labeled section starts
+        m = re.search(r'\n\s*(?:captions?|hashtags?)\s*[:\-]', desc, flags=re.I)
+        if m:
+            desc = desc[:m.start()].strip()
+        return title[:100], desc
+    lines = t.split('\n', 1)                      # plain fallback
+    return lines[0].strip()[:100], lines[1].strip() if len(lines) > 1 else ''
+
 def yt_update_meta(video_id, title, description, tags):
     """Apply Claude-written captions sent as a Telegram text message.
     First line of the message = video title, rest = description."""
@@ -213,14 +237,14 @@ def main():
         # text message = Claude-written captions for the last uploaded video
         txt = (m.get('text') or '').strip()
         if txt and not txt.startswith('/'):
-            last_vid = st.get('last_video_id')
+            # a YouTube link inside the text targets THAT video, else the last one
+            lm = re.search(r'(?:youtube\.com/(?:shorts/|watch\?v=)|youtu\.be/)([\w-]{11})', txt)
+            last_vid = lm.group(1) if lm else st.get('last_video_id')
             if not last_vid:
                 api('sendMessage', {'chat_id': CHAT_ID,
                     'text': 'Send a video first, then paste your captions to update it.'})
             else:
-                lines = txt.split('\n', 1)
-                title = lines[0].strip()[:100]
-                desc = lines[1].strip() if len(lines) > 1 else ''
+                title, desc = parse_caption_update(txt)
                 tags = [w.lstrip('#') for w in (title + ' ' + desc).split() if w.startswith('#')]
                 try:
                     yt_update_meta(last_vid, title, desc, tags)
