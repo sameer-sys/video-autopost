@@ -16,6 +16,7 @@ YT_REFRESH = os.environ.get('YT_REFRESH_TOKEN', '')
 FB_PAGE_TOKEN = os.environ.get('FB_PAGE_TOKEN', '')
 FB_PAGE_ID = os.environ.get('FB_PAGE_ID', '')
 IG_USER_ID = os.environ.get('IG_USER_ID', '')
+IG_TOKEN = os.environ.get('IG_TOKEN', '')
 STATE_FILE = 'state.json'
 PLACEHOLDER_CAPTION = ('🎬 New ToonPop World drop! Follow for daily cartoons 🍿\n'
                        '#cartoon #animation #reels #shorts #funny #toonpopworld')
@@ -306,13 +307,13 @@ def main():
                         print('fb upload failed:', e)
                         links.append('📘 failed: ' + str(e)[:80])
                 # Instagram Reel (skipped silently if secrets missing)
-                if FB_PAGE_TOKEN and IG_USER_ID:
+                if IG_TOKEN and IG_USER_ID:
                     try:
                         tg = api('getFile', {'file_id': vid['file_id']})
                         tg_url = ('https://api.telegram.org/file/bot' + TOKEN +
                                   '/' + tg['result']['file_path'])
                         ig_link = fb_ig.ig_reel_publish(hd, IG_USER_ID,
-                                                        FB_PAGE_TOKEN,
+                                                        IG_TOKEN,
                                                         PLACEHOLDER_CAPTION,
                                                         telegram_file_url=tg_url)
                         links.append('📸 ' + ig_link)

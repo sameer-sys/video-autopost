@@ -73,9 +73,30 @@ def fb_update_description(video_id, page_token, title, description):
         return json.load(r)
 
 
+IG_GRAPH = 'https://graph.instagram.com'
+
+
+def _ig_post(url, params, token):
+    """Instagram Login API: Bearer header auth on graph.instagram.com."""
+    data = urllib.parse.urlencode(params).encode()
+    req = urllib.request.Request(url, data=data, method='POST',
+                                 headers={'Authorization': f'Bearer {token}'})
+    with urllib.request.urlopen(req, timeout=120) as r:
+        return json.load(r)
+
+
+def _ig_get(url, params, token):
+    qs = urllib.parse.urlencode(params)
+    req = urllib.request.Request(f'{url}?{qs}',
+                                 headers={'Authorization': f'Bearer {token}'})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return json.load(r)
+
+
 def ig_reel_publish(video_path, ig_user_id, page_token, caption,
                     telegram_file_url=''):
-    """Instagram Reel: needs a PUBLIC video url Meta's servers can download.
+    """Instagram Reel via Instagram API with Instagram Login (graph.instagram.com).
+    Needs a PUBLIC video url Meta's servers can download.
     Primary host: catbox.moe (permanent, correct mime). Fallback: telegram cdn."""
     media_url = ''
     try:
@@ -93,15 +114,15 @@ def ig_reel_publish(video_path, ig_user_id, page_token, caption,
         media_url = telegram_file_url
     if not media_url:
         raise RuntimeError('no public video url available for instagram')
-    r1 = _post(f'{GRAPH}/{ig_user_id}/media',
-               {'media_type': 'REELS', 'video_url': media_url,
-                'caption': caption[:2200], 'share_to_feed': 'true',
-                'access_token': page_token})
+    r1 = _ig_post(f'{IG_GRAPH}/me/media',
+                  {'media_type': 'REELS', 'video_url': media_url,
+                   'caption': caption[:2200], 'share_to_feed': 'true'},
+                  page_token)
     cid = r1['id']
     # poll container status until processed
     for _ in range(30):
-        st = _get(f'{GRAPH}/{cid}', {'fields': 'status_code',
-                                     'access_token': page_token})
+        st = _ig_get(f'{IG_GRAPH}/{cid}', {'fields': 'status_code'},
+                     page_token)
         code = st.get('status_code')
         if code == 'FINISHED':
             break
@@ -111,13 +132,13 @@ def ig_reel_publish(video_path, ig_user_id, page_token, caption,
         time.sleep(10)
     else:
         raise RuntimeError('instagram processing timeout')
-    r2 = _post(f'{GRAPH}/{ig_user_id}/media_publish',
-               {'creation_id': cid, 'access_token': page_token})
+    r2 = _ig_post(f'{IG_GRAPH}/me/media_publish',
+                  {'creation_id': cid}, page_token)
     mid = r2['id']
     for _ in range(6):
         try:
-            p = _get(f'{GRAPH}/{mid}', {'fields': 'permalink',
-                                        'access_token': page_token})
+            p = _ig_get(f'{IG_GRAPH}/{mid}', {'fields': 'permalink'},
+                        page_token)
             return p['permalink']
         except Exception:
             time.sleep(5)

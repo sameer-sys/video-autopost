@@ -1,4 +1,4 @@
-name: Video Autopost 24/7
+﻿name: Video Autopost 24/7
 
 on:
   schedule:
@@ -30,6 +30,7 @@ jobs:
           FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
           FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          IG_TOKEN: ${{ secrets.IG_TOKEN }}
         run: python3 telegram_pipeline.py
 
       - name: Commit state back (idempotency)
