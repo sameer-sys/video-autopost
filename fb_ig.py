@@ -2,7 +2,7 @@
 """Facebook Page Reel + Instagram Reel publishing.
 Both need secrets set in GitHub: FB_PAGE_TOKEN, FB_PAGE_ID, IG_USER_ID.
 If they are missing, callers skip these platforms gracefully."""
-import json, os, time, urllib.request, urllib.parse
+import json, os, time, urllib.request, urllib.parse, urllib.error
 
 GRAPH = 'https://graph.facebook.com/v26.0'
 
@@ -10,8 +10,12 @@ GRAPH = 'https://graph.facebook.com/v26.0'
 def _post(url, params):
     req = urllib.request.Request(url, data=urllib.parse.urlencode(params).encode(),
                                  headers={'Content-Type': 'application/x-www-form-urlencoded'})
-    with urllib.request.urlopen(req, timeout=120) as r:
-        return json.load(r)
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        body = e.read().decode('utf-8', 'replace')[:300]
+        raise RuntimeError(f'graph POST {e.code}: {body}')
 
 
 def _get(url, params):

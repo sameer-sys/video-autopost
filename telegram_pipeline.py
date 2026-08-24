@@ -33,8 +33,19 @@ def api(method, params=None, files=None):
         r = subprocess.run(args, capture_output=True, text=True)
         return json.loads(r.stdout)
     req = urllib.request.Request(url + '?' + urllib.parse.urlencode(params or {}))
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return json.load(r)
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        body = e.read().decode('utf-8', 'replace')[:200]
+        raise RuntimeError(f'telegram {method}: {e.code} {body}')
+
+def safe_send(text):
+    """Never let a notification failure kill processing/state."""
+    try:
+        api('sendMessage', {'chat_id': CHAT_ID, 'text': text})
+    except Exception as e:
+        print('sendMessage failed:', e)
 
 def fetch(url, timeout=180):
     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -242,8 +253,7 @@ def main():
             lm = re.search(r'(?:youtube\.com/(?:shorts/|watch\?v=)|youtu\.be/)([\w-]{11})', txt)
             last_vid = lm.group(1) if lm else st.get('last_video_id')
             if not last_vid:
-                api('sendMessage', {'chat_id': CHAT_ID,
-                    'text': 'Send a video first, then paste your captions to update it.'})
+                safe_send('Send a video first, then paste your captions to update it.')
             else:
                 title, desc = parse_caption_update(txt)
                 tags = [w.lstrip('#') for w in (title + ' ' + desc).split() if w.startswith('#')]
@@ -258,18 +268,19 @@ def main():
                             fb_note = '\n📘 Facebook description updated'
                         except Exception as e:
                             print('fb desc update failed:', e)
-                    api('sendMessage', {'chat_id': CHAT_ID,
-                        'text': '\u2705 Captions applied!\n\n' + title +
-                                '\n\nhttps://youtube.com/shorts/' + last_vid + fb_note})
+                    safe_send('\u2705 Captions applied!\n\n' + title +
+                              '\n\nhttps://youtube.com/shorts/' + last_vid + fb_note)
                     print('captions applied to', last_vid)
                 except Exception as e:
                     print('caption update error:', e)
-                    api('sendMessage', {'chat_id': CHAT_ID,
-                        'text': f'\u274c Caption update failed: {e}'})
+                    safe_send(f'\u274c Caption update failed: {e}')
                 commit_state()
             save_state(st)
             continue
         vid = m.get('video')
+        doc = m.get('document')
+        if doc and str(doc.get('mime_type', '')).startswith('video/'):
+            vid = doc   # original-quality file upload (no Telegram recompression)
         if vid and uid not in st['done']:
             try:
                 src = f"in_{uid}.mp4"
@@ -291,6 +302,9 @@ def main():
                     pkg = fallback_package()
                 vid_id = yt_upload(hd, pkg)
                 st['last_video_id'] = vid_id   # target for caption updates
+                st['done'].append(uid)         # mark done NOW: later failures must never re-upload
+                save_state(st)
+                commit_state()
                 links = ['🎬 https://youtube.com/shorts/' + vid_id]
                 print('UPLOADED yt', vid_id)
                 # Facebook Page Reel (skipped silently if secrets missing)
@@ -321,14 +335,15 @@ def main():
                     except Exception as e:
                         print('ig upload failed:', e)
                         links.append('📸 failed: ' + str(e)[:80])
-                api('sendMessage', {'chat_id': CHAT_ID, 'text': '\n'.join(links)})
-                st['done'].append(uid)
+                safe_send('\n'.join(links))
                 print('replied to video', uid)
                 commit_state()   # durable progress after EVERY video
             except Exception as e:
                 print('ERROR on update', uid, ':', e)
+                st['done'].append(uid)   # never retry a broken update forever
+                save_state(st)
                 try:
-                    api('sendMessage', {'chat_id': CHAT_ID, 'text': f'\u274c Processing failed: {e}'})
+                    safe_send(f'\u274c Processing failed: {e}')
                 except Exception:
                     pass
             finally:

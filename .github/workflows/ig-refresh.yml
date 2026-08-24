@@ -1,0 +1,44 @@
+name: IG Token Auto-Refresh
+
+on:
+  schedule:
+    - cron: '0 3 1 * *'   # 1st of every month, 03:00 UTC
+  workflow_dispatch:        # manual trigger button
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refresh Instagram long-lived token and update secret
+        env:
+          IG_TOKEN: ${{ secrets.IG_TOKEN }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          pip install pynacl requests -q
+          python3 << 'EOF'
+          import os, json, base64, urllib.request
+          from nacl import encoding, public as naclpub
+
+          old = os.environ['IG_TOKEN']
+          pat = os.environ['GH_PAT']
+          repo = os.environ['GITHUB_REPOSITORY']
+
+          # 1. refresh -> new 60-day token
+          req = urllib.request.Request(
+              f'https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token={old}')
+          new = json.loads(urllib.request.urlopen(req).read())['access_token']
+          print('refreshed OK, len', len(new))
+
+          # 2. update IG_TOKEN secret
+          keydata = json.loads(urllib.request.urlopen(urllib.request.Request(
+              f'https://api.github.com/repos/{repo}/actions/secrets/public-key',
+              headers={'Authorization': f'token {pat}'})).read())
+          pk = naclpub.PublicKey(keydata['key'].encode(), encoding.Base64Encoder())
+          enc = base64.b64encode(naclpub.SealedBox(pk).encrypt(new.encode())).decode()
+          body = json.dumps({'encrypted_value': enc, 'key_id': keydata['key_id']}).encode()
+          req2 = urllib.request.Request(
+              f'https://api.github.com/repos/{repo}/actions/secrets/IG_TOKEN',
+              method='PUT', data=body,
+              headers={'Authorization': f'token {pat}', 'Content-Type': 'application/json'})
+          print('secret update:', urllib.request.urlopen(req2).status)
+EOF
