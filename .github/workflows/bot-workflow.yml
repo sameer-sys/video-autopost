@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write           # needed to commit state.json back
 
+concurrency:
+  group: bot-pipeline       # never two runs at once: no state races, no duplicates
+  cancel-in-progress: false
+
 jobs:
   bot-pipeline:
     runs-on: ubuntu-latest
@@ -39,4 +43,5 @@ jobs:
           git config user.email "video-autopost-bot@users.noreply.github.com"
           git add state.json
           git diff --cached --quiet || git commit -m "state: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git pull --rebase -X ours origin main || true
           git push origin main
