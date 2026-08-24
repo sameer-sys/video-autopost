@@ -30,17 +30,21 @@ def fb_reel_upload(video_path, page_token, page_id, description):
     r1 = _post(f'{GRAPH}/{page_id}/video_reels',
                {'upload_phase': 'start', 'access_token': page_token})
     video_id = r1['video_id']
-    # phase 2: transfer binary to rupload
+    # phase 2: transfer binary to the upload_url Meta returns
     data = open(video_path, 'rb').read()
     last_err = None
     for attempt in range(3):
         try:
             req = urllib.request.Request(
-                f'https://rupload.facebook.com/video-upload/v26.0/{video_id}',
+                r1.get('upload_url',
+                       f'https://rupload.facebook.com/video-upload/v26.0/{video_id}'),
                 data=data, method='POST',
                 headers={'Authorization': 'OAuth ' + page_token,
                          'Content-Type': 'application/octet-stream',
-                         'offset': '0'})
+                         'offset': '0',
+                         'X-Entity-Length': str(len(data)),
+                         'X-Entity-Name': os.path.basename(video_path) or 'reel.mp4',
+                         'X-Entity-Type': 'video/mp4'})
             with urllib.request.urlopen(req, timeout=600) as r:
                 json.load(r)
             break
