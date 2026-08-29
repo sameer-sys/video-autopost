@@ -2,7 +2,7 @@
 
 on:
   schedule:
-    - cron: '*/5 * * * *'   # every 5 minutes, 24/7, runs in GitHub's free cloud
+    - cron: '0 */6 * * *'   # every 6h: restarts the long loop; queue delays are fine
   workflow_dispatch:        # manual "Run workflow" button
 
 permissions:
@@ -15,7 +15,7 @@ concurrency:
 jobs:
   bot-pipeline:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 4260   # 71h: public repo allows 72h jobs -> continuous polling
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,7 +23,7 @@ jobs:
       - name: Install ffmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
-      - name: Run Telegram pipeline
+      - name: Run Telegram pipeline (continuous loop)
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
@@ -35,7 +35,7 @@ jobs:
           FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
           IG_TOKEN: ${{ secrets.IG_TOKEN }}
-        run: python3 telegram_pipeline.py
+        run: python3 telegram_loop.py
 
       - name: Commit state back (idempotency)
         run: |
