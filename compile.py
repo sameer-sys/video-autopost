@@ -105,14 +105,19 @@ def list_channel_videos(access):
 
 def download(video_id, dest, cookies_file):
     url = f'https://www.youtube.com/watch?v={video_id}'
-    r = subprocess.run(['yt-dlp', '--cookies', cookies_file,
-                        '--extractor-args', 'youtube:player_client=android',
-                        '-f', 'bv*[height<=1080]+ba/b',
-                        '--merge-output-format', 'mp4',
-                        '-o', dest, url], capture_output=True, text=True, timeout=600)
-    if r.returncode != 0:
-        raise RuntimeError('yt-dlp: ' + (r.stderr or r.stdout)[-300:])
-    return os.path.getsize(dest)
+    clients = ['android', 'web_embedded', 'tv', 'mweb']
+    last_err = None
+    for client in clients:
+        r = subprocess.run(['yt-dlp', '--cookies', cookies_file,
+                            '--extractor-args', f'youtube:player_client={client}',
+                            '-f', 'bv*[height<=1080]+ba/b',
+                            '--merge-output-format', 'mp4',
+                            '-o', dest, url], capture_output=True, text=True, timeout=600)
+        if r.returncode == 0:
+            return os.path.getsize(dest)
+        last_err = (r.stderr or r.stdout)[-300:]
+        log(f'client {client} failed for {video_id}: {last_err}')
+    raise RuntimeError('yt-dlp all clients: ' + last_err)
 
 
 def concat(paths, out):
