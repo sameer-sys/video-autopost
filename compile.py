@@ -255,16 +255,16 @@ def build_and_post(videos, label):
         size = concat(paths, out)
         log(f'compiled {len(paths)} videos -> {size} bytes')
         access = yt_access_token()
-        title = f'ToonPop World {label} Compilation ({len(videos)} shorts)'
+        title = f'ToonPop World {label} Compilation ({len(paths)} shorts)'
         yt_id = yt_upload(out, access, title)
-        log('UPLOADED yt', yt_id)
+        log('UPLOADED yt ' + yt_id)
         links = ['🎬 ' + title, '▶️ https://youtube.com/watch?v=' + yt_id]
         fb_link = ''
         if FB_PAGE_TOKEN and FB_PAGE_ID:
             try:
                 fb_link = fb_ig.fb_video_upload(out, FB_PAGE_TOKEN, FB_PAGE_ID, PLACEHOLDER)
                 links.append('📘 ' + fb_link)
-                log('UPLOADED fb', fb_link)
+                log('UPLOADED fb ' + fb_link)
             except Exception as e:
                 log('fb upload failed: ' + str(e))
                 links.append('📘 failed: ' + str(e)[:80])
