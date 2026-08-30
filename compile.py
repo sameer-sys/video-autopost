@@ -73,7 +73,7 @@ def yt_get(path, access):
 
 
 def list_channel_videos(access):
-    """Return [{id, published_at, views, title}] newest-first."""
+    """Return [{id, published_at, views, title}] newest-first, public only."""
     ch = yt_get('channels?part=contentDetails&mine=true', access)
     up = ch['items'][0]['contentDetails']['relatedPlaylists']['uploads']
     ids, page = [], None
@@ -89,8 +89,10 @@ def list_channel_videos(access):
     vids = []
     for i in range(0, len(ids), 50):
         chunk = ','.join(ids[i:i + 50])
-        j = yt_get(f'videos?part=snippet,statistics&id={chunk}', access)
+        j = yt_get(f'videos?part=snippet,statistics,status&id={chunk}', access)
         for v in j.get('items', []):
+            if v.get('status', {}).get('privacyStatus') != 'public':
+                continue  # skip private/unlisted (e.g. failed uploads)
             vids.append({
                 'id': v['id'],
                 'published_at': v['snippet']['publishedAt'],
@@ -103,7 +105,10 @@ def list_channel_videos(access):
 
 def download(video_id, dest):
     url = f'https://www.youtube.com/watch?v={video_id}'
-    r = subprocess.run(['yt-dlp', '-f', 'best[height<=1080]', '--merge-output-format', 'mp4',
+    r = subprocess.run(['yt-dlp', '--cookies', 'yt_cookies.txt',
+                        '--extractor-args', 'youtube:player_client=android',
+                        '-f', 'bv*[height<=1080]+ba/b',
+                        '--merge-output-format', 'mp4',
                         '-o', dest, url], capture_output=True, text=True, timeout=600)
     if r.returncode != 0:
         raise RuntimeError('yt-dlp: ' + (r.stderr or r.stdout)[-300:])

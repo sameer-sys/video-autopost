@@ -21,6 +21,10 @@ jobs:
         run: |
           pip install yt-dlp
           sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - name: Write YouTube cookies
+        run: echo "$YT_COOKIES" | base64 -d > yt_cookies.txt
+        env:
+          YT_COOKIES: ${{ secrets.YT_COOKIES }}
       - name: Run compilation pipeline
         run: python compile.py
         env:
