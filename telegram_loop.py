@@ -21,6 +21,7 @@ FB_PAGE_ID = os.environ.get('FB_PAGE_ID', '')
 IG_USER_ID = os.environ.get('IG_USER_ID', '')
 IG_TOKEN = os.environ.get('IG_TOKEN', '')
 STATE_FILE = 'state.json'
+VIDEOS_FILE = 'videos.json'   # history of received videos for the compile pipeline
 PLACEHOLDER_CAPTION = ('🎬 New ToonPop World drop! Follow for daily cartoons 🍿\n'
                        '#cartoon #animation #reels #shorts #funny #toonpopworld')
 
@@ -65,19 +66,29 @@ def save_state(st):
     json.dump(st, open(STATE_FILE, 'w'))
 
 def commit_state():
-    """Push state.json back to the repo so the next run resumes exactly here."""
+    """Push state.json + videos.json back to the repo so the next run resumes exactly here."""
     gh = os.environ.get('GITHUB_TOKEN', '')
     if not gh:
         return
     subprocess.run(['git', 'config', 'user.name', 'video-autopost-bot'], capture_output=True)
     subprocess.run(['git', 'config', 'user.email', 'video-autopost-bot@users.noreply.github.com'], capture_output=True)
-    subprocess.run(['git', 'add', STATE_FILE], capture_output=True)
+    subprocess.run(['git', 'add', STATE_FILE, VIDEOS_FILE], capture_output=True)
     r = subprocess.run(['git', 'diff', '--cached', '--quiet'], capture_output=True)
     if r.returncode != 0:
         subprocess.run(['git', 'commit', '-m', 'state: ' + time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())], capture_output=True)
         p = subprocess.run(['git', 'push', 'https://x-access-token:' + gh + '@github.com/sameer-sys/video-autopost.git', 'main'],
                            capture_output=True, text=True)
         print('state pushed' if p.returncode == 0 else 'state push failed: ' + p.stderr[-200:])
+
+def record_video(uid, file_id, yt_id, fb_id=''):
+    """Append a processed video to videos.json (feeds the compile pipeline)."""
+    try:
+        hist = json.load(open(VIDEOS_FILE))
+    except Exception:
+        hist = []
+    hist.append({'uid': uid, 'file_id': file_id, 'date': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+                 'yt_id': yt_id, 'fb_id': fb_id})
+    json.dump(hist[-500:], open(VIDEOS_FILE, 'w'))   # keep last 500
 
 def download_telegram_file(file_id, dest):
     j = api('getFile', {'file_id': file_id})
@@ -273,6 +284,7 @@ def process_update(u):
             st['last_video_id'] = vid_id   # target for caption updates
             st['done'].append(uid)         # mark done NOW: later failures must never re-upload
             save_state(st)
+            record_video(uid, vid['file_id'], vid_id)
             commit_state()
             links = ['🎬 https://youtube.com/shorts/' + vid_id]
             print(time.strftime('%H:%M:%S'), 'UPLOADED yt', vid_id)

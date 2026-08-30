@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """Daily + weekly compilation pipeline.
 
-Daily (12:00 IST): downloads today's shorts (last 24h) + top 3 most-viewed
-extras from the last 7 days, joins them newest-first into one video,
-posts to YouTube + Facebook Page, sends links to Telegram.
+Daily (12:00 IST): joins today's shorts (last 24h) + top 3 most-viewed
+extras from the last 7 days, newest-first, into one video, posts to
+YouTube + Facebook Page, sends links to Telegram.
 
 Weekly (Sunday 12:00 IST): joins ALL videos from the last 7 days into one
 big video, posts to YouTube + Facebook Page, sends links to Telegram.
 
-The user then pastes a title/description to the bot, which updates the
-last uploaded video (existing caption-update feature).
+Downloads come from TELEGRAM (the bot records every received video's
+file_id in videos.json) — YouTube downloads are blocked on GitHub
+datacenter IPs, so yt-dlp is only a fallback for local runs.
 """
 import json, os, re, shutil, subprocess, sys, time, datetime
 import urllib.request, urllib.parse, urllib.error
@@ -24,6 +25,7 @@ YT_REFRESH = os.environ.get('YT_REFRESH_TOKEN', '')
 FB_PAGE_TOKEN = os.environ.get('FB_PAGE_TOKEN', '')
 FB_PAGE_ID = os.environ.get('FB_PAGE_ID', '')
 STATE_FILE = 'state.json'
+VIDEOS_FILE = 'videos.json'
 
 PLACEHOLDER = ('🎬 ToonPop World Compilation! Best cartoon moments, one video.\n'
                '#toonpopworld #cartoon #animation #compilation #funny #shorts')
@@ -42,6 +44,12 @@ def api(method, params=None):
     except urllib.error.HTTPError as e:
         body = e.read().decode('utf-8', 'replace')[:200]
         raise RuntimeError(f'telegram {method}: {e.code} {body}')
+
+
+def fetch(url, timeout=180):
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read()
 
 
 def safe_send(text):
@@ -103,21 +111,36 @@ def list_channel_videos(access):
     return vids
 
 
-def download(video_id, dest, cookies_file):
-    url = f'https://www.youtube.com/watch?v={video_id}'
-    clients = ['android', 'web_embedded', 'tv', 'mweb']
-    last_err = None
-    for client in clients:
-        r = subprocess.run(['yt-dlp', '--cookies', cookies_file,
-                            '--extractor-args', f'youtube:player_client={client}',
-                            '-f', 'bv*[height<=1080]+ba/b',
-                            '--merge-output-format', 'mp4',
-                            '-o', dest, url], capture_output=True, text=True, timeout=600)
-        if r.returncode == 0:
-            return os.path.getsize(dest)
-        last_err = (r.stderr or r.stdout)[-300:]
-        log(f'client {client} failed for {video_id}: {last_err}')
-    raise RuntimeError('yt-dlp all clients: ' + last_err)
+def load_history():
+    """videos.json -> {yt_id: {file_id, date, uid}}"""
+    try:
+        hist = json.load(open(VIDEOS_FILE))
+    except Exception:
+        return {}
+    out = {}
+    for h in hist:
+        if h.get('yt_id') and h.get('file_id'):
+            out[h['yt_id']] = h
+    return out
+
+
+def download_video(v, dest, cookies_file):
+    """Telegram download (primary). yt-dlp fallback for local runs."""
+    if v.get('file_id'):
+        j = api('getFile', {'file_id': v['file_id']})
+        path = j['result']['file_path']
+        data = fetch('https://api.telegram.org/file/bot' + TOKEN + '/' + path)
+        open(dest, 'wb').write(data)
+        return len(data)
+    url = f'https://www.youtube.com/watch?v={v["id"]}'
+    r = subprocess.run(['yt-dlp', '--cookies', cookies_file,
+                        '--extractor-args', 'youtube:player_client=android',
+                        '-f', 'bv*[height<=1080]+ba/b',
+                        '--merge-output-format', 'mp4',
+                        '-o', dest, url], capture_output=True, text=True, timeout=600)
+    if r.returncode != 0:
+        raise RuntimeError('yt-dlp: ' + (r.stderr or r.stdout)[-300:])
+    return os.path.getsize(dest)
 
 
 def concat(paths, out):
@@ -210,16 +233,17 @@ def build_and_post(videos, label):
     """Download, join, upload to YT + FB, send links. Returns (yt_id, fb_link)."""
     workdir = f'compile_{int(time.time())}'
     os.makedirs(workdir, exist_ok=True)
-    # disposable copy: yt-dlp rewrites the cookies file it reads, so never
-    # hand it the source file (auth cookies would be wiped for next run)
     cookies_file = os.path.join(workdir, 'cookies.txt')
-    shutil.copyfile('yt_cookies.txt', cookies_file)
+    try:
+        shutil.copyfile('yt_cookies.txt', cookies_file)
+    except Exception:
+        cookies_file = None
     paths = []
     try:
         for i, v in enumerate(videos):
             dest = os.path.join(workdir, f'{i:02d}_{v["id"]}.mp4')
             try:
-                download(v['id'], dest, cookies_file)
+                download_video(v, dest, cookies_file)
                 paths.append(dest)
                 log(f'downloaded {v["id"]} ({v["views"]} views)')
             except Exception as e:
@@ -261,13 +285,17 @@ def main():
     if not vids:
         log('no videos at all, skipping')
         return
+    history = load_history()
+    for v in vids:
+        h = history.get(v['id'])
+        if h:
+            v['file_id'] = h['file_id']
 
     st = load_state()
     yt_id = fb_link = None
     label = ''
 
     if is_sunday:
-        # weekly: all videos from the last 7 days
         cutoff = now - datetime.timedelta(days=7)
         weekly = [v for v in vids if datetime.datetime.fromisoformat(
             v['published_at'].replace('Z', '+00:00')) >= cutoff]
@@ -278,7 +306,6 @@ def main():
         else:
             log(f'weekly skipped: only {len(weekly)} videos in 7 days')
 
-    # daily: last 24h + top 3 popular extras from last 7 days
     cutoff24 = now - datetime.timedelta(hours=24)
     cutoff7 = now - datetime.timedelta(days=7)
     todays = [v for v in vids if datetime.datetime.fromisoformat(
