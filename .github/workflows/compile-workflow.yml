@@ -1,7 +1,7 @@
 name: Compile & Post
 on:
   schedule:
-    - cron: '30 6 * * *'   # 12:00 IST daily (weekly compile runs on Sundays inside the script)
+    - cron: '30 13 * * *'   # 19:00 IST peak hours daily (weekly compile runs on Sundays inside the script)
   workflow_dispatch:
 
 concurrency:

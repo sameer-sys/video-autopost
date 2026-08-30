@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Daily + weekly compilation pipeline.
 
-Daily (12:00 IST): joins today's shorts (last 24h) + top 3 most-viewed
+Daily (19:00 IST peak hours): joins today's shorts (last 24h) + top 3 most-viewed
 extras from the last 7 days, newest-first, into one video, posts to
 YouTube + Facebook Page, sends links to Telegram.
 
-Weekly (Sunday 12:00 IST): joins ALL videos from the last 7 days into one
+Weekly (Sunday 19:00 IST peak hours): joins ALL videos from the last 7 days into one
 big video, posts to YouTube + Facebook Page, sends links to Telegram.
 
 Downloads come from TELEGRAM (the bot records every received video's
