@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: bot-pipeline
+  group: compile-pipeline
   cancel-in-progress: false
 
 jobs:
