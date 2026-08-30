@@ -80,6 +80,7 @@ def fb_video_upload(video_path, page_token, page_id, description):
                {'upload_phase': 'start', 'file_size': size,
                 'access_token': page_token})
     video_id = r1['video_id']
+    upload_session_id = r1.get('upload_session_id', '')
     upload_url = r1.get('upload_url',
                         f'https://rupload.facebook.com/video-upload/v26.0/{video_id}')
     data = open(video_path, 'rb').read()
@@ -105,6 +106,7 @@ def fb_video_upload(video_path, page_token, page_id, description):
         raise last_err
     _post(f'{GRAPH}/{page_id}/videos',
           {'upload_phase': 'finish', 'video_id': video_id,
+           'upload_session_id': upload_session_id,
            'description': description, 'access_token': page_token})
     for _ in range(12):
         try:

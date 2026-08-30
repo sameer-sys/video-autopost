@@ -8,6 +8,9 @@ concurrency:
   group: compile-pipeline
   cancel-in-progress: false
 
+permissions:
+  contents: write           # needed to commit state.json back
+
 jobs:
   compile:
     runs-on: ubuntu-latest
