@@ -11,7 +11,7 @@ big video, posts to YouTube + Facebook Page, sends links to Telegram.
 The user then pastes a title/description to the bot, which updates the
 last uploaded video (existing caption-update feature).
 """
-import json, os, re, subprocess, sys, time, datetime
+import json, os, re, shutil, subprocess, sys, time, datetime
 import urllib.request, urllib.parse, urllib.error
 
 import fb_ig
@@ -103,9 +103,9 @@ def list_channel_videos(access):
     return vids
 
 
-def download(video_id, dest):
+def download(video_id, dest, cookies_file):
     url = f'https://www.youtube.com/watch?v={video_id}'
-    r = subprocess.run(['yt-dlp', '--cookies', 'yt_cookies.txt',
+    r = subprocess.run(['yt-dlp', '--cookies', cookies_file,
                         '--extractor-args', 'youtube:player_client=android',
                         '-f', 'bv*[height<=1080]+ba/b',
                         '--merge-output-format', 'mp4',
@@ -205,12 +205,16 @@ def build_and_post(videos, label):
     """Download, join, upload to YT + FB, send links. Returns (yt_id, fb_link)."""
     workdir = f'compile_{int(time.time())}'
     os.makedirs(workdir, exist_ok=True)
+    # disposable copy: yt-dlp rewrites the cookies file it reads, so never
+    # hand it the source file (auth cookies would be wiped for next run)
+    cookies_file = os.path.join(workdir, 'cookies.txt')
+    shutil.copyfile('yt_cookies.txt', cookies_file)
     paths = []
     try:
         for i, v in enumerate(videos):
             dest = os.path.join(workdir, f'{i:02d}_{v["id"]}.mp4')
             try:
-                download(v['id'], dest)
+                download(v['id'], dest, cookies_file)
                 paths.append(dest)
                 log(f'downloaded {v["id"]} ({v["views"]} views)')
             except Exception as e:
