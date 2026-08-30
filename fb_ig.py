@@ -72,6 +72,52 @@ def fb_reel_upload(video_path, page_token, page_id, description):
     return f'https://facebook.com/reel/{video_id}'
 
 
+def fb_video_upload(video_path, page_token, page_id, description):
+    """Regular (non-reel) video upload to a Page via resumable upload.
+    Used for compilations longer than 90s (FB Reel limit)."""
+    size = os.path.getsize(video_path)
+    r1 = _post(f'{GRAPH}/{page_id}/videos',
+               {'upload_phase': 'start', 'file_size': size,
+                'access_token': page_token})
+    video_id = r1['video_id']
+    upload_url = r1.get('upload_url',
+                        f'https://rupload.facebook.com/video-upload/v26.0/{video_id}')
+    data = open(video_path, 'rb').read()
+    last_err = None
+    for attempt in range(3):
+        try:
+            req = urllib.request.Request(
+                upload_url, data=data, method='POST',
+                headers={'Authorization': 'OAuth ' + page_token,
+                         'Content-Type': 'application/octet-stream',
+                         'offset': '0',
+                         'X-Entity-Length': str(size),
+                         'X-Entity-Name': os.path.basename(video_path) or 'video.mp4',
+                         'X-Entity-Type': 'video/mp4'})
+            with urllib.request.urlopen(req, timeout=900) as r:
+                json.load(r)
+            break
+        except Exception as e:
+            last_err = e
+            print('fb video rupload attempt', attempt + 1, 'failed:', e)
+            time.sleep(5 * (attempt + 1))
+    else:
+        raise last_err
+    _post(f'{GRAPH}/{page_id}/videos',
+          {'upload_phase': 'finish', 'video_id': video_id,
+           'description': description, 'access_token': page_token})
+    for _ in range(12):
+        try:
+            j = _get(f'{GRAPH}/{video_id}', {'fields': 'permalink_url',
+                                             'access_token': page_token})
+            if j.get('permalink_url'):
+                return 'https://facebook.com' + j['permalink_url']
+        except Exception:
+            pass
+        time.sleep(10)
+    return f'https://facebook.com/watch?v={video_id}'
+
+
 def fb_update_description(video_id, page_token, title, description):
     """Update an already-published FB reel/video description."""
     meta = urllib.parse.urlencode({'description': (title + '\n\n' + description)[:5000],
