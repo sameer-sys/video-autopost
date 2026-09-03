@@ -9,6 +9,18 @@
       "ts": "2026-09-03T13:56:40.823488+00:00",
       "your_channels": {},
       "benchmarks": {}
+    },
+    {
+      "ts": "2026-09-03T13:58:36.936780+00:00",
+      "your_channels": {
+        "youtube": {
+          "subscribers": 0,
+          "total_views": 457,
+          "videos": 21,
+          "avg_views_7d": 20
+        }
+      },
+      "benchmarks": {}
     }
   ]
 }
