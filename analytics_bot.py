@@ -22,7 +22,7 @@ from email.mime.multipart import MIMEMultipart
 STATE_FILE = 'analytics_state.json'
 EMAIL_TO = os.environ.get('EMAIL_TO', 'samesuf786@gmail.com')
 EMAIL_FROM = os.environ.get('GMAIL_USER', '')
-EMAIL_PASS = os.environ.get('GMAIL_PASS', '')
+EMAIL_PASS = os.environ.get('GMAIL_APP_PASSWORD', '')
 
 # ---------------------------------------------------------------------------
 # Your channels

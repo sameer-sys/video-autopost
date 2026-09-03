@@ -32,7 +32,7 @@ jobs:
           GMAIL_USER:       ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           EMAIL_TO:         ${{ secrets.EMAIL_TO }}
-          YOUR_YT_CHANNEL_ID: ${{ secrets.YOUR_YT_CHANNEL_ID }}
+          YOUR_YT_CHANNEL_ID: UCx_eggTH3zOcuLDr2iYayoA
           YOUR_IG_USER_ID:   ${{ secrets.YOUR_IG_USER_ID }}
         run: python3 analytics_bot.py
       - name: Commit analytics state back
