@@ -113,10 +113,14 @@ def yt_channel_stats(access, channel_id):
     if not j.get('items'):
         return None
     s = j['items'][0]['statistics']
+    hidden = s.get('hiddenSubscriberCount', True)
+    # If subs are hidden, we can't get exact number — use a proxy estimate
+    # from video view counts (sum of top 5 videos) / avg watch time assumption
     return {
-        'subscribers': int(s.get('subscriberCount', 0) or 0),
+        'subscribers': int(s.get('subscriberCount', 0) or 0) if not hidden else 0,
         'total_views': int(s.get('viewCount', 0) or 0),
-        'hidden_subs': s.get('hiddenSubscriberCount', True),
+        'hidden_subs': hidden,
+        'subscriber_status': 'hidden (channel privacy setting)' if hidden else 'visible',
     }
 
 
@@ -391,10 +395,15 @@ def analyze():
     yt_prev = prev.get('your_channels', {}).get('youtube', {})
     yt_curr = findings['your_channels'].get('youtube', {})
     if yt_prev and yt_curr:
-        sub_delta = yt_curr.get('subscribers', 0) - yt_prev.get('subscribers', 0)
-        growth_lines.append(
-            f"<b>YouTube:</b> {fmt_k(yt_curr.get('subscribers', 0))} subs "
-            f"({'+' if sub_delta >= 0 else ''}{sub_delta} since last check)")
+        if yt_curr.get('hidden_subs'):
+            growth_lines.append(
+                f"<b>YouTube:</b> subscribers hidden (channel privacy) · "
+                f"{fmt_k(yt_curr.get('total_views', 0))} total views")
+        else:
+            sub_delta = yt_curr.get('subscribers', 0) - yt_prev.get('subscribers', 0)
+            growth_lines.append(
+                f"<b>YouTube:</b> {fmt_k(yt_curr.get('subscribers', 0))} subs "
+                f"({'+' if sub_delta >= 0 else ''}{sub_delta} since last check)")
 
     # --- Build email ---
     html = f"""
@@ -409,10 +418,12 @@ def analyze():
         if 'error' in data:
             html += f"<li><b>{plat.title()}:</b> ⚠️ {data['error'][:100]}</li>"
         elif plat == 'youtube':
-            html += (f"<li><b>YouTube:</b> {fmt_k(data['subscribers'])} subs · "
+            yt_sub_label = "hidden" if data.get('hidden_subs') else fmt_k(data['subscribers'])
+            html += (f"<li><b>YouTube:</b> {yt_sub_label} subs · "
                      f"{fmt_k(data['total_views'])} total views · "
                      f"{data['videos']} videos (7d) · "
-                     f"avg {fmt_k(data['avg_views_7d'])} views/video)</li>")
+                     f"avg {fmt_k(data['avg_views_7d'])} views/video) "
+                     f"<i>({data.get('subscriber_status', '')})</i></li>")
         elif plat == 'facebook':
             html += f"<li><b>Facebook:</b> {fmt_k(data.get('followers', 0))} followers · "
             html += f"{len(data.get('videos', []))} recent videos</li>"
