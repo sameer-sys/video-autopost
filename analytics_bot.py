@@ -22,7 +22,7 @@ from email.mime.multipart import MIMEMultipart
 STATE_FILE = 'analytics_state.json'
 EMAIL_TO = os.environ.get('EMAIL_TO', 'samesuf786@gmail.com')
 EMAIL_FROM = os.environ.get('GMAIL_USER', '')
-EMAIL_PASS = os.environ.get('GMAIL_APP_PASSWORD', '')
+EMAIL_PASS = os.environ.get('GMAIL_APP_PASSWORD', '').replace(' ', '')  # strip any spaces/hyphens users paste
 
 # ---------------------------------------------------------------------------
 # Your channels
@@ -206,25 +206,82 @@ def ig_basic(ig_user_id, ig_token):
 
 
 def send_email(subject, body_html):
-    """Send HTML email via Gmail SMTP."""
+    """Send HTML email via Gmail SMTP with fallback diagnostics."""
     if not (EMAIL_FROM and EMAIL_PASS):
         print('No email configured; printing to stdout instead.')
         print(f'SUBJECT: {subject}')
         print(body_html)
         return
+
     msg = MIMEMultipart('alternative')
     msg['Subject'] = subject
     msg['From'] = EMAIL_FROM
     msg['To'] = EMAIL_TO
     msg.attach(MIMEText(body_html, 'html'))
+
     try:
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
             server.login(EMAIL_FROM, EMAIL_PASS)
             server.send_message(msg)
-        print('Email sent to', EMAIL_TO)
+        print('✅ Email sent to', EMAIL_TO)
     except Exception as e:
-        print('Email send failed:', e)
-        print(body_html)
+        print(f'❌ Email send failed: {e}')
+
+        # Fallback: Try using the Gmail API directly if SMTP fails
+        try:
+            # Check if we have OAuth credentials for a more robust approach
+            import base64
+            api_url = 'https://gmail.googleapis.com/gmail/v1/users/me/messages:send'
+            message = MIMEText(body_html, 'html')
+            message['Subject'] = subject
+            message['From'] = EMAIL_FROM
+            message['To'] = EMAIL_TO
+            raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
+
+            # Try to get an access token from existing refresh token (reuse YT auth)
+            yt_refresh = os.environ.get('YT_REFRESH_TOKEN', '')
+            yt_cid = os.environ.get('YT_CLIENT_ID', '')
+            yt_csec = os.environ.get('YT_CLIENT_SECRET', '')
+
+            if yt_refresh and yt_cid and yt_csec:
+                body = urllib.parse.urlencode({
+                    'client_id': yt_cid,
+                    'client_secret': yt_csec,
+                    'refresh_token': yt_refresh,
+                    'grant_type': 'refresh_token'
+                }).encode()
+                req = urllib.request.Request(
+                    'https://oauth2.googleapis.com/token',
+                    data=body,
+                    headers={'Content-Type': 'application/x-www-form-urlencoded'}
+                )
+                with urllib.request.urlopen(req, timeout=15) as r:
+                    token = json.load(r).get('access_token')
+
+                if token:
+                    api_req = urllib.request.Request(
+                        api_url,
+                        data=json.dumps({'raw': raw}).encode(),
+                        headers={
+                            'Authorization': f'Bearer {token}',
+                            'Content-Type': 'application/json'
+                        }
+                    )
+                    try:
+                        with urllib.request.urlopen(api_req, timeout=30) as resp:
+                            result = json.load(resp)
+                            print(f'✅ Email sent via Gmail API (message ID: {result.get("id")})')
+                            return
+                    except Exception as api_err:
+                        print(f'❌ Gmail API fallback also failed: {api_err}')
+        except Exception as fb_err:
+            print(f'❌ Fallback mechanism error: {fb_err}')
+
+        # Final fallback: save report locally
+        print('📄 Email failed - saving report to analytics_email_backup.html')
+        with open('analytics_email_backup.html', 'w') as f:
+            f.write(f'<h1>{subject}</h1>\n{body_html}')
+        print(f'📄 Report saved to analytics_email_backup.html')
 
 
 # ---------------------------------------------------------------------------

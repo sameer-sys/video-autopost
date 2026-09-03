@@ -6,6 +6,8 @@ on:
 
 permissions:
   contents: write
+  # Need to add 'gmail.send' scope — but since GitHub Actions can't request OAuth scopes,
+  # the bot will try SMTP first; if that fails it reuses YT OAuth refresh token for Gmail API
 
 concurrency:
   group: analytics-pipeline
