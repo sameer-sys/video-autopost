@@ -209,8 +209,48 @@ def ig_basic(ig_user_id, ig_token):
         return json.load(r)
 
 
+def send_telegram(text):
+    """Send the analytics report via Telegram (free, hits phone instantly)."""
+    tg_token = os.environ.get('TELEGRAM_TOKEN', '')
+    chat_id = os.environ.get('CHAT_ID', '')
+    if not tg_token or not chat_id:
+        print('Telegram not configured; skipping.')
+        return False
+    try:
+        url = f'https://api.telegram.org/bot{tg_token}/sendMessage'
+        # Telegram has 4096 char limit per message; chunk if needed
+        chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
+        for chunk in chunks:
+            payload = json.dumps({
+                'chat_id': chat_id,
+                'text': chunk,
+                'parse_mode': 'HTML',
+                'disable_web_page_preview': True
+            }).encode()
+            req = urllib.request.Request(
+                url,
+                data=payload,
+                headers={'Content-Type': 'application/json'}
+            )
+            with urllib.request.urlopen(req, timeout=15) as r:
+                result = json.load(r)
+                if not result.get('ok'):
+                    print(f'Telegram send error: {result}')
+                    return False
+        print(f'✅ Telegram message sent ({len(chunks)} chunk(s))')
+        return True
+    except Exception as e:
+        print(f'❌ Telegram send failed: {e}')
+        return False
+
+
 def send_email(subject, body_html):
-    """Send HTML email via Gmail SMTP with fallback diagnostics."""
+    """Send HTML email via Gmail SMTP with Telegram + GitHub Issue fallbacks."""
+    # Try Telegram first (most reliable, hits phone instantly)
+    text_for_tg = f"📊 {subject}\n\n{body_html}"
+    if send_telegram(text_for_tg):
+        return
+
     if not (EMAIL_FROM and EMAIL_PASS):
         print('No email configured; printing to stdout instead.')
         print(f'SUBJECT: {subject}')

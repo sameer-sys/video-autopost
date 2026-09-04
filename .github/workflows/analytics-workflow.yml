@@ -42,6 +42,9 @@ jobs:
           YOUR_YT_CHANNEL_ID: UCx_eggTH3zOcuLDr2iYayoA
           # For GitHub Issues fallback when SMTP fails
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Telegram (primary notification channel)
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
         run: python3 analytics_bot.py
       - name: Commit state back
         run: |
