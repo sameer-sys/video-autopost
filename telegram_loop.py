@@ -348,7 +348,7 @@ def main():
                 save_state(st)
                 commit_state()
                 last_beat = time.time()
-            j = api('getUpdates', {'offset': st['offset'], 'timeout': 25})
+            j = api('getUpdates', {'offset': st['offset'], 'timeout': 25, 'allowed_updates': '["message", "channel_post"]'})
             updates = j.get('result', [])
             if updates:
                 print(time.strftime('%H:%M:%S'), 'updates:', len(updates))
