@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """Inject email credentials into GitHub repo secrets using GITHUB_TOKEN."""
-import base64, json, os, subprocess, urllib.request, urllib.error
-from nacl import encoding, public as naclpub
+import base64, json, os, subprocess, urllib.request, urllib.error, sys
+
+try:
+    from nacl import encoding, public as naclpub
+except ImportError:
+    subprocess.run([sys.executable, '-m', 'pip', 'install', 'pynacl'], capture_output=True, timeout=30)
+    from nacl import encoding, public as naclpub
 
 GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN', '')
 if not GITHUB_TOKEN:
@@ -19,7 +24,6 @@ if not GITHUB_TOKEN:
 EMAIL_PASS = os.environ.get('EMAIL_PASS', 'rvwrgbvxnjitiwmo')
 GITHUB_API = "https://api.github.com/repos/sameer-sys/video-autopost/actions/secrets"
 
-# Get repo public key
 req = urllib.request.Request(f"{GITHUB_API}/public-key",
     headers={"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"})
 with urllib.request.urlopen(req, timeout=10) as r:
