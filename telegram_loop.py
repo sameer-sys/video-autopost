@@ -265,6 +265,14 @@ def process_update(u):
         try:
             src = f"in_{uid}.mp4"
             hd = f"hd_{uid}.mp4"
+            # Check file size before download (Telegram API limits getFile to 50MB)
+            file_size = vid.get('file_size', 0)
+            if file_size > 50 * 1024 * 1024:
+                size_mb = file_size / (1024 * 1024)
+                safe_send('❌ File too large (' + str(round(size_mb, 1)) + 'MB). Max 50MB. Please compress the video.')
+                st['done'].append(uid)
+                save_state(st)
+                return
             size = download_telegram_file(vid['file_id'], src)
             print(time.strftime('%H:%M:%S'), 'downloaded', size)
             # Check duration: only process videos >= 40 seconds
