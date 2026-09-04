@@ -39,6 +39,8 @@ jobs:
           GMAIL_APP_PASSWORD: rvwrgbvxnjitiwmo
           EMAIL_TO: samesuf786@gmail.com
           YOUR_YT_CHANNEL_ID: UCx_eggTH3zOcuLDr2iYayoA
+          # For GitHub Issues fallback when SMTP fails
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 analytics_bot.py
       - name: Commit state back
         run: |
