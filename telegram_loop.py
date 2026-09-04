@@ -275,8 +275,8 @@ def process_update(u):
                 seconds = float(dur.stdout.strip())
             except:
                 seconds = 0
-            if seconds < 40:
-                safe_send('❌ Video too short (' + str(int(seconds)) + 's). Need 40+ seconds.')
+            if seconds > 45:
+                safe_send('❌ Video too long (' + str(int(seconds)) + 's). Max 45 seconds.')
                 st['done'].append(uid)
                 save_state(st)
                 return
