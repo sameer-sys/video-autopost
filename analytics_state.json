@@ -189,6 +189,18 @@
         }
       },
       "benchmarks": {}
+    },
+    {
+      "ts": "2026-09-04T21:07:00.084915+00:00",
+      "your_channels": {
+        "youtube": {
+          "subscribers": 0,
+          "total_views": 457,
+          "videos": 25,
+          "avg_views_7d": 5
+        }
+      },
+      "benchmarks": {}
     }
   ]
 }
