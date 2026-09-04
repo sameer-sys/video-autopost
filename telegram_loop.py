@@ -93,6 +93,10 @@ def record_video(uid, file_id, yt_id, fb_id=''):
 def download_telegram_file(file_id, dest):
     j = api('getFile', {'file_id': file_id})
     path = j['result']['file_path']
+    # Check file size before downloading (Telegram limits getFile to ~50MB)
+    file_size = j['result'].get('file_size', 0)
+    if file_size > 50 * 1024 * 1024:
+        raise RuntimeError('file too big: ' + str(file_size) + ' bytes')
     data = fetch('https://api.telegram.org/file/bot' + TOKEN + '/' + path)
     open(dest, 'wb').write(data)
     return len(data)
