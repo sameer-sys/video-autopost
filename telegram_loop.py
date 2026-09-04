@@ -267,6 +267,19 @@ def process_update(u):
             hd = f"hd_{uid}.mp4"
             size = download_telegram_file(vid['file_id'], src)
             print(time.strftime('%H:%M:%S'), 'downloaded', size)
+            # Check duration: only process videos >= 40 seconds
+            dur = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+                                  '-of', 'default=noprint_wrappers=1:nokey=1', src],
+                                 capture_output=True, text=True)
+            try:
+                seconds = float(dur.stdout.strip())
+            except:
+                seconds = 0
+            if seconds < 40:
+                safe_send('❌ Video too short (' + str(int(seconds)) + 's). Need 40+ seconds.')
+                st['done'].append(uid)
+                save_state(st)
+                return
             upscale(src, hd)
             print(time.strftime('%H:%M:%S'), 'upscaled ok')
             if GEMINI_KEY:
