@@ -33,8 +33,8 @@ jobs:
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
           FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
-          FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
-          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          YOUR_FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
+          YOUR_IG_USER_ID: ${{ secrets.IG_USER_ID }}
           IG_TOKEN: ${{ secrets.IG_TOKEN }}
           # Email credentials (from GitHub secrets)
           GMAIL_USER: samesuf629@gmail.com
