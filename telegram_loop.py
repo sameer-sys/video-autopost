@@ -265,11 +265,11 @@ def process_update(u):
         try:
             src = f"in_{uid}.mp4"
             hd = f"hd_{uid}.mp4"
-            # Check file size before download (Telegram API limits getFile to 50MB)
+            # Check file size before download (Telegram Bot API getFile limit is 20MB)
             file_size = vid.get('file_size', 0)
             if file_size > 20 * 1024 * 1024:
                 size_mb = file_size / (1024 * 1024)
-                safe_send('❌ File too large (' + str(round(size_mb, 1)) + 'MB). Max 50MB. Please compress the video.')
+                safe_send('❌ File too large (' + str(round(size_mb, 1)) + 'MB). Max 20MB. Please compress the video.')
                 st['done'].append(uid)
                 save_state(st)
                 return
