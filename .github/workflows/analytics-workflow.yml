@@ -35,9 +35,9 @@ jobs:
           FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
           IG_TOKEN: ${{ secrets.IG_TOKEN }}
-          # Hardcoded email credentials (bypasses GitHub secrets API issue)
+          # Email credentials (from GitHub secrets)
           GMAIL_USER: samesuf629@gmail.com
-          GMAIL_APP_PASSWORD: rvwrgbvxnjitiwmo
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           EMAIL_TO: samesuf786@gmail.com
           YOUR_YT_CHANNEL_ID: UCx_eggTH3zOcuLDr2iYayoA
           # For GitHub Issues fallback when SMTP fails
