@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: bot-pipeline       # never two runs at once: no state races, no duplicates
-  cancel-in-progress: false
+  cancel-in-progress: true  # cancel old run when new one starts
 
 jobs:
   bot-pipeline:
