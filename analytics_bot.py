@@ -30,6 +30,8 @@ EMAIL_PASS = os.environ.get('GMAIL_APP_PASSWORD', '').replace(' ', '')  # strip 
 YOUR_YT_CHANNEL_ID = os.environ.get('YOUR_YT_CHANNEL_ID', 'UCx_eggTH3zOcuLDr2iYayoA')
 YOUR_IG_USER_ID = os.environ.get('YOUR_IG_USER_ID', '')
 YOUR_FB_PAGE_ID = os.environ.get('YOUR_FB_PAGE_ID', '')  # auto-detected if empty
+FB_PAGE_TOKEN = os.environ.get('FB_PAGE_TOKEN', '')
+IG_TOKEN = os.environ.get('IG_TOKEN', '')
 
 # ---------------------------------------------------------------------------
 # Resolve FB Page ID if not given (auto-detection)
