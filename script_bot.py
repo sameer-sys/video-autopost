@@ -190,16 +190,18 @@ def make_script():
     title_template = random.choice(TITLES)
     title = fill_template(title_template)
     hook = random.choice(HOOKS).format(n=random.randint(2, 99))
-    style = "9:16 vertical short, vibrant 2D cartoon animation, Studio Ghibli-lite style, orange tabby cat lead, exaggerated expressions, fast motion, bright kitchen lighting, no watermark, smooth cel-shaded look. Google Flow text-to-video, same character reference across all 3 clips for consistency"
-    # Actually build prompts from scratch:
+    # FLOW-SAFE rules (Google Flow / Veo limits, PM-enforced):
+    # - ONE action per clip, <40 words, no dialogue, no on-screen text requests
+    # - same character anchor every clip ("same orange tabby cat")
+    # - 9:16 vertical, simple setting, no multi-scene jumps inside one clip
+    cat = "same orange tabby cartoon cat"
     food = random.choice(FOODS).lower()
     w = random.choice(WORLDS)
     c1 = "the orange cat"
-    c2 = "the detective parrot"
     prompts = [
-        f"Flow clip 1: {c1} sneaks toward {food} in {w}, sneaky eyes, stretches paw, dramatic zoom, {style}.",
-        f"Flow clip 2: {c1} grabs {food}, owner spots, epic chase around the counter, slapstick comedy, keep same cat design as clip 1, {style}.",
-        f"Flow clip 3: {c1} triumphs with {food}, victory bite, portal to another world opens, fade out with logo, same cat design, {style}.",
+        f"{cat} tiptoeing toward a plate of {food} on a {w}, sneaky look, paw reaching out, 9:16 vertical cartoon, bright colors",
+        f"{cat} grabbing the {food} and running while owner chases, slapstick kitchen chase, 9:16 vertical cartoon, fast funny motion",
+        f"{cat} happily eating the {food}, victory smile, sparkling background, 9:16 vertical cartoon, warm light",
     ]
     narration = (
         f"[0-3s HOOK] {hook}\n"
