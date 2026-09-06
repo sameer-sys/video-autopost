@@ -291,6 +291,27 @@ def process_update(u):
                 return
             upscale(src, hd)
             print(time.strftime('%H:%M:%S'), 'upscaled ok')
+            # PM1 Editor: hook overlay + thumbnail (non-fatal — falls back to plain)
+            try:
+                import editor_bot as _ed
+                hook_txt = ''
+                try:
+                    _ad = json.load(open('adder_state.json'))
+                    hook_txt = _ad.get('hook_text', '')
+                except Exception:
+                    pass
+                rep = _ed.process(hd, hook_txt, workdir='/tmp')
+                if rep.get('problems'):
+                    safe_send('❌ ' + '; '.join(rep['problems']))
+                    st['done'].append(uid)
+                    save_state(st)
+                    return
+                if rep.get('ready'):
+                    hd = rep['ready']
+                print(time.strftime('%H:%M:%S'), 'editor:', rep.get('hook'),
+                      'thumb:', rep.get('thumbnail'))
+            except Exception as e:
+                print('editor skipped (non-fatal):', e)
             if GEMINI_KEY:
                 try:
                     raw = gemini_package()
@@ -302,6 +323,18 @@ def process_update(u):
             else:
                 print('gemini disabled, using default captions')
                 pkg = fallback_package()
+            # PM1 Adder: pre-built package wins (IG locks caption at publish)
+            try:
+                _ad = json.load(open('adder_state.json'))
+                if _ad.get('yt', {}).get('title'):
+                    pkg = {'title': _ad['yt']['title'][:60],
+                           'description': _ad['yt'].get('description', pkg['description']),
+                           'captions': pkg.get('captions', []),
+                           'hashtags': [h for h in _ad.get('ig', {}).get('caption', '').split()
+                                        if h.startswith('#')][:12] or pkg['hashtags']}
+                    print('adder package applied:', pkg['title'])
+            except Exception as e:
+                print('adder skipped (non-fatal):', e)
             vid_id = yt_upload(hd, pkg)
             st['last_video_id'] = vid_id   # target for caption updates
             st['done'].append(uid)         # mark done NOW: later failures must never re-upload
