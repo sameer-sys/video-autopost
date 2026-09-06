@@ -313,6 +313,26 @@
         }
       },
       "benchmarks": {}
+    },
+    {
+      "ts": "2026-09-06T04:58:42.820435+00:00",
+      "your_channels": {
+        "youtube": {
+          "subscribers": 4,
+          "total_views": 528,
+          "videos": 25,
+          "avg_views_7d": 6
+        },
+        "facebook": {
+          "error": "HTTP Error 403: Forbidden"
+        },
+        "instagram": {
+          "followers_count": 11,
+          "media_count": 21,
+          "id": "27585862241114245"
+        }
+      },
+      "benchmarks": {}
     }
   ]
 }
