@@ -338,7 +338,9 @@ def process_update(u):
                 except Exception as e:
                     print('ig upload failed:', e)
                     links.append('📸 failed: ' + str(e)[:80])
-            safe_send('\n'.join(links))
+            # PM1: CEO wants just "done" — no links (captions/tags all handled in-house now)
+            safe_send('✅ Done')
+            print(time.strftime('%H:%M:%S'), 'links:', ' | '.join(links))
             print(time.strftime('%H:%M:%S'), 'replied to video', uid)
             # PM1 batch loop: video posted → auto-send next 3-prompt batch
             try:
