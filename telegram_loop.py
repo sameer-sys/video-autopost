@@ -167,7 +167,8 @@ def yt_upload(video_path, pkg):
     meta = json.dumps({
         'snippet': {'title': pkg['title'], 'description': pkg['description'] + '\n\n' + ' '.join(pkg['hashtags']),
                     'tags': [h.lstrip('#') for h in pkg['hashtags']], 'categoryId': '24'},
-        'status': {'privacyStatus': 'public', 'selfDeclaredMadeForKids': False}}).encode()
+        'status': {'privacyStatus': 'private', 'selfDeclaredMadeForKids': False}}).encode()
+    # PM1: video starts PRIVATE (uploaded at night). A separate morning job flips to public.
     req = urllib.request.Request(
         'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',
         data=meta, method='POST',

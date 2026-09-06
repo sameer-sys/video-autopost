@@ -1,7 +1,7 @@
 name: Channel Analytics Bot
 on:
   schedule:
-    - cron: '30 */6 * * *'
+    - cron: '0 */12 * * *'  # Every 12 hours (2x/day) — PM1 monitors daily
   workflow_dispatch:
     inputs:
       test_email:
