@@ -340,6 +340,13 @@ def process_update(u):
                     links.append('📸 failed: ' + str(e)[:80])
             safe_send('\n'.join(links))
             print(time.strftime('%H:%M:%S'), 'replied to video', uid)
+            # PM1 batch loop: video posted → auto-send next 3-prompt batch
+            try:
+                import script_bot as _sb
+                n, _msg = _sb.next_batch(send=True)
+                print(time.strftime('%H:%M:%S'), 'next script batch sent:', n)
+            except Exception as e:
+                print('next-batch failed (non-fatal):', e)
             commit_state()   # durable progress after EVERY video
         except Exception as e:
             print('ERROR on update', uid, ':', e)

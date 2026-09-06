@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """
-ToonPop World Script Bot
-Generates 3 viral cartoon-cat short scripts/day + splits into 3 Google Flow prompts.
-Sends all 3 scripts directly via Telegram to the user (no email).
+ToonPop World Script Bot — BATCH MODE (PM1).
+One batch = 3 Google Flow prompts = 1 video (30s).
+Loop: send batch N → CEO makes video → sends to @Toonpop_upload_bot
+→ posting bot uploads → auto-sends batch N+1. Up to 5/day, more on demand.
+Batch 1 fires on schedule (09:30 IST). Batches 2+ fire after each upload
+(telegram_loop.py calls next_batch() post-upload).
 Runs on GitHub Actions schedule.
 
 Niche: funny cartoon-cat shorts (Hinglish), food + mischief + fantasy.
@@ -292,6 +295,29 @@ def render_script_for_telegram(script, idx):
     return '\n'.join(lines)
 
 
+# ---- Batch mode: one batch = 1 video ----
+def today_key():
+    return datetime.datetime.now().strftime('%Y-%m-%d')
+
+
+def next_batch(send=True):
+    """Build batch N for today, send via Telegram, track in state.
+    Returns (batch_no, message). Importable by telegram_loop.py."""
+    st = load_state()
+    today = today_key()
+    if st.get('date') != today:
+        st = {'date': today, 'batches': []}
+    n = len(st.get('batches', [])) + 1
+    s = make_script()
+    msg = ("[Script Bot] 🎬 Batch %d — 1 video (3 Flow prompts):\n\n" % n
+           + render_script_for_telegram(s, n))
+    ok = send_telegram(msg) if send else True
+    st.setdefault('batches', []).append({'n': n, 'title': s['title'], 'sent': ok})
+    save_state({**st, 'date': today})
+    print(f'Batch {n}: {s["title"]} ok={ok}')
+    return n, msg
+
+
 # ---- Main ----
 def pm_pick(scripts):
     """PM1 picks 1 winner daily — CEO only makes the winner video."""
@@ -308,29 +334,9 @@ def pm_pick(scripts):
 
 
 def main():
-    print('=== Script Bot starting ===')
-    recent_titles = fetch_recent_titles()
-    print(f'Fetched {len(recent_titles)} recent titles from your channel')
-    scripts = make_three_scripts(recent_titles)
-    winner = pm_pick(scripts)
-
-    st = load_state()
-    st.setdefault('sent', []).append({
-        'date': datetime.datetime.now().strftime('%Y-%m-%d'),
-        'winner': winner,
-        'titles': [s['title'] for s in scripts],
-    })
-    st['sent'] = st['sent'][-30:]
-    save_state(st)
-
-    msg = ("[Script Bot] 🎬 Today's pick (PM1 chose 1 of 3):\n\n"
-           + render_script_for_telegram(scripts[winner], 1))
-    alts = [s['title'] for i, s in enumerate(scripts) if i != winner]
-    msg += f"\n\nAlternates (only if Flow fails): 1) {alts[0]}  2) {alts[1]}"
-    ok = send_telegram(msg)
-    print(f'Sent winner {winner}: {scripts[winner]["title"]} ok={ok}')
-    time.sleep(2)
-    print('Done.')
+    print('=== Script Bot starting (batch 1 of day) ===')
+    n, _ = next_batch(send=True)
+    print(f'Done. Batch {n} sent. Batches 2+ fire after each upload.')
 
 
 if __name__ == '__main__':
