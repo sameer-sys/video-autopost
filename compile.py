@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
-"""Daily + weekly compilation pipeline.
+"""Weekly compilation pipeline — ONLY Sunday.
 
-Daily (19:00 IST peak hours): joins today's shorts (last 24h) + top 3 most-viewed
-extras from the last 7 days, newest-first, into one video, posts to
-YouTube + Facebook Page, sends links to Telegram.
+Every Sunday: collects ALL shorts posted Mon-Sat of the current week,
+shuffles/jumbles them randomly, joins into one compilation video,
+posts to YouTube + Facebook Page, sends links to Telegram.
 
-Weekly (Sunday 19:00 IST peak hours): joins ALL videos from the last 7 days into one
-big video, posts to YouTube + Facebook Page, sends links to Telegram.
+Week boundary: Monday 00:00 UTC to Sunday 23:59 UTC.
 
 Downloads come from TELEGRAM (the bot records every received video's
-file_id in videos.json) — YouTube downloads are blocked on GitHub
-datacenter IPs, so yt-dlp is only a fallback for local runs.
+file_id in videos.json)."""
 """
-import json, os, re, shutil, subprocess, sys, time, datetime
+import json, os, random, re, shutil, subprocess, sys, time, datetime
 import urllib.request, urllib.parse, urllib.error
 
 import fb_ig
@@ -144,7 +142,8 @@ def download_video(v, dest, cookies_file):
 
 
 def concat(paths, out):
-    """Join videos newest-first into one 1080x1920 mp4."""
+    """Join videos in JUMBLE (random) order into one 1080x1920 mp4."""
+    random.shuffle(paths)  # JUMBLE — mix week shorts randomly
     n = len(paths)
     fc = []
     for i, p in enumerate(paths):
@@ -296,34 +295,22 @@ def main():
     label = ''
 
     if is_sunday:
-        cutoff = now - datetime.timedelta(days=7)
+        # Week: Mon 00:00 UTC to Sun 23:59 UTC (this week)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        weekday = now.weekday()
+        # Week start this Monday (Mon=0)
+        week_start = (now - datetime.timedelta(days=weekday)).replace(hour=0, minute=0, second=0, microsecond=0)
+        # If today is Sunday (6) but before 00:00, that's last week — handled naturally
         weekly = [v for v in vids if datetime.datetime.fromisoformat(
-            v['published_at'].replace('Z', '+00:00')) >= cutoff]
-        if len(weekly) >= 3:
-            log(f'WEEKLY: {len(weekly)} videos from last 7 days')
+            v['published_at'].replace('Z', '+00:00')) >= week_start]
+        if len(weekly) >= 2:
+            log(f'WEEKLY: {len(weekly)} videos Mon-Sun this week (jumble)')
             yt_id, fb_link = build_and_post(weekly, 'Weekly')
             label = 'Weekly'
         else:
-            log(f'weekly skipped: only {len(weekly)} videos in 7 days')
+            log(f'weekly skipped: only {len(weekly)} videos in Mon-Sun week')
 
-    cutoff24 = now - datetime.timedelta(hours=24)
-    cutoff7 = now - datetime.timedelta(days=7)
-    todays = [v for v in vids if datetime.datetime.fromisoformat(
-        v['published_at'].replace('Z', '+00:00')) >= cutoff24]
-    recent7 = [v for v in vids if datetime.datetime.fromisoformat(
-        v['published_at'].replace('Z', '+00:00')) >= cutoff7]
-    todays_ids = {v['id'] for v in todays}
-    extras = [v for v in recent7 if v['id'] not in todays_ids]
-    extras.sort(key=lambda v: v['views'], reverse=True)
-    extras = extras[:3]
-    daily = todays + extras
-    daily.sort(key=lambda v: v['published_at'], reverse=True)
-    if todays:
-        log(f'DAILY: {len(todays)} today + {len(extras)} popular extras = {len(daily)}')
-        yt_id, fb_link = build_and_post(daily, 'Daily')
-        label = 'Daily'
-    else:
-        log('daily skipped: no videos in last 24h')
+    # NO DAILY — compile bot only runs weekly
 
     if yt_id:
         st['last_video_id'] = yt_id
