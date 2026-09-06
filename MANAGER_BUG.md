@@ -24,3 +24,7 @@
 - All 8 workflows + 13 bot files on `main`, compile-verified.
 - Batch loop code live, waiting for loop restart (cron ≤6h or manual run).
 - Next auto-fire: trend 09:00 IST → script 09:30 IST → manager 11:00 IST.
+
+## ✅ RESOLVED 2026-09-07 — CEO confirmed "working now"
+- Script batches reaching Telegram. Standing rule locked: PM1 reports every
+  problem + solution to Manager session, never dumps raw errors on CEO.
