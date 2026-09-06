@@ -9,7 +9,6 @@ Week boundary: Monday 00:00 UTC to Sunday 23:59 UTC.
 
 Downloads come from TELEGRAM (the bot records every received video's
 file_id in videos.json)."""
-"""
 import json, os, random, re, shutil, subprocess, sys, time, datetime
 import urllib.request, urllib.parse, urllib.error
 
@@ -142,8 +141,9 @@ def download_video(v, dest, cookies_file):
 
 
 def concat(paths, out):
-    """Join videos in JUMBLE (random) order into one 1080x1920 mp4."""
-    random.shuffle(paths)  # JUMBLE — mix week shorts randomly
+    """Join videos in random order into big video."""
+    random.shuffle(paths)  # JUMBLE
+
     n = len(paths)
     fc = []
     for i, p in enumerate(paths):
@@ -229,7 +229,6 @@ def commit_state():
 
 
 def build_and_post(videos, label):
-    """Download, join, upload to YT + FB, send links. Returns (yt_id, fb_link)."""
     workdir = f'compile_{int(time.time())}'
     os.makedirs(workdir, exist_ok=True)
     cookies_file = os.path.join(workdir, 'cookies.txt')
