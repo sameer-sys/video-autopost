@@ -293,29 +293,43 @@ def render_script_for_telegram(script, idx):
 
 
 # ---- Main ----
+def pm_pick(scripts):
+    """PM1 picks 1 winner daily — CEO only makes the winner video."""
+    try:
+        trend = json.load(open('trend_state.json')).get('history', [])[-1].get('trend', '')
+    except Exception:
+        trend = ''
+    if trend:
+        for i, s in enumerate(scripts):
+            blob = (s['title'] + ' ' + s.get('trope', '')).lower()
+            if trend.split()[0].lower() in blob:
+                return i
+    return 0
+
+
 def main():
     print('=== Script Bot starting ===')
     recent_titles = fetch_recent_titles()
     print(f'Fetched {len(recent_titles)} recent titles from your channel')
     scripts = make_three_scripts(recent_titles)
+    winner = pm_pick(scripts)
 
     st = load_state()
     st.setdefault('sent', []).append({
         'date': datetime.datetime.now().strftime('%Y-%m-%d'),
-        'sent': [],  # we track via Telegram logs
+        'winner': winner,
         'titles': [s['title'] for s in scripts],
     })
     st['sent'] = st['sent'][-30:]
     save_state(st)
 
-    today = datetime.datetime.now().strftime('%Y-%m-%d')
-    for i, s in enumerate(scripts, 1):
-        msg = render_script_for_telegram(s, i)
-        ok = send_telegram(msg)
-        print(f'Sent script {i}/3: title={s["title"]} ok={ok}')
-        # small pause so Telegram doesn't rate-limit
-        time.sleep(2)
-
+    msg = ("[Script Bot] 🎬 Today's pick (PM1 chose 1 of 3):\n\n"
+           + render_script_for_telegram(scripts[winner], 1))
+    alts = [s['title'] for i, s in enumerate(scripts) if i != winner]
+    msg += f"\n\nAlternates (only if Flow fails): 1) {alts[0]}  2) {alts[1]}"
+    ok = send_telegram(msg)
+    print(f'Sent winner {winner}: {scripts[winner]["title"]} ok={ok}')
+    time.sleep(2)
     print('Done.')
 
 
