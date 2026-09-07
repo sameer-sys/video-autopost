@@ -81,23 +81,50 @@ def yt_access_token():
         return json.load(r)["access_token"]
 
 def yt_upload_private(token, video_path, title, desc, tags):
-    """Upload to YT as PRIVATE."""
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    """Upload to YT as PRIVATE using simple upload."""
+    headers = {"Authorization": f"Bearer {token}"}
     body = {
         "snippet": {"title": title, "description": desc, "tags": tags, "categoryId": "22"},
         "status": {"privacyStatus": "private", "selfDeclaredMadeForKids": False}
     }
-    url = "https://www.googleapis.com/upload/youtube/v3/videos?part=snippet,status&uploadType=resumable"
-    req = urllib.request.Request(url, data=json.dumps(body).encode(), headers=headers, method="POST")
-    with urllib.request.urlopen(req) as r:
-        location = r.headers.get("Location")
-        if not location:
-            raise Exception("No upload URL")
+    # Use multipart upload (simpler and more reliable)
+    import mimetypes
+    mime_type, _ = mimetypes.guess_type(video_path)
+    if not mime_type:
+        mime_type = "video/mp4"
     
     with open(video_path, "rb") as f:
-        data = f.read()
-    headers = {"Authorization": f"Bearer {token}", "Content-Length": str(len(data))}
-    req = urllib.request.Request(location, data=data, headers=headers, method="PUT")
+        video_data = f.read()
+    
+    # Build multipart body
+    boundary = "====BOUNDARY===="
+    body_lines = [
+        f"--{boundary}",
+        "Content-Type: application/json; charset=UTF-8",
+        "",
+        json.dumps(body),
+        f"--{boundary}",
+        f"Content-Type: {mime_type}",
+        f"Content-Transfer-Encoding: binary",
+        "",
+        "",
+    ]
+    # Note: This is a simplified approach - we'll use the standard upload endpoint
+    url = "https://www.googleapis.com/upload/youtube/v3/videos?part=snippet,status&uploadType=multipart"
+    
+    # Create multipart request
+    multipart_data = (
+        f"--{boundary}\r\n"
+        f"Content-Type: application/json; charset=UTF-8\r\n\r\n"
+        f"{json.dumps(body)}\r\n"
+        f"--{boundary}\r\n"
+        f"Content-Type: {mime_type}\r\n\r\n"
+    ).encode() + video_data + f"\r\n--{boundary}--\r\n".encode()
+    
+    headers["Content-Type"] = f"multipart/related; boundary={boundary}"
+    headers["Content-Length"] = str(len(multipart_data))
+    
+    req = urllib.request.Request(url, data=multipart_data, headers=headers, method="POST")
     with urllib.request.urlopen(req, timeout=600) as r:
         return json.load(r)
 
