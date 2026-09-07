@@ -1,13 +1,10 @@
 {
-  "sent": [
+  "date": "2026-09-07",
+  "batches": [
     {
-      "date": "2026-09-06",
-      "sent": [],
-      "titles": [
-        "She Cooked gulab jamun... He Stole It \ud83c\udf5c",
-        "the same orange cat Fell Asleep Mid-Lesson \ud83d\ude39",
-        "her tiny brother cat Fell Asleep Mid-Lesson \ud83d\ude39"
-      ]
+      "n": 1,
+      "title": "a naughty baby sister cat Ne steaming hot momos Chura Liya \ud83d\ude31",
+      "sent": true
     }
   ]
 }
