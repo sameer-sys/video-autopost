@@ -43,3 +43,9 @@ MANAGER ACTION TAKEN:
 - Updated Hindi hooks, Hindi narration, expanded tags, clean descriptions
 - Created MANAGER session format (Telegram messages tagged [Bot Name])
 - Logged bug + resolution; standing rule locked: PM1 reports every problem + solution to Manager, never dumps on CEO
+
+## 🔴 MANAGER DIRECTIVE NEEDED (CEO: full control to Manager)
+- Stored token pushes fine but REST dispatch = 401 (missing `workflow` scope).
+- Schedules self-fire regardless: trend 09:00 → script 09:30 → manager 11:00 IST.
+- Manager: either issue fresh token (repo+workflow) OR tap Run workflow x2.
+  PM1 cannot mint tokens. Escalated per standing rule.
