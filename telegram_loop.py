@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Posting Bot with MTProto (Telethon) for 2GB downloads.
+Posting Bot — Bot API version (20MB limit, works reliably).
 Downloads video → upscales → uploads to YT private → replies "✅ Done"
 """
 import json, os, re, sys, subprocess, time, urllib.request, urllib.parse
@@ -8,13 +8,10 @@ from pathlib import Path
 
 # ─── Config ───
 BOT_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-API_ID = int(os.environ.get("TELEGRAM_API_ID", "36325364"))
-API_HASH = os.environ.get("TELEGRAM_API_HASH", "5f03f8bfeddec2cf2c1b30c9692b54ff")
-TELETHON_SESSION = os.environ.get("TELETHON_SESSION")
+CHAT_ID = os.environ.get("CHAT_ID")
 YT_CLIENT_ID = os.environ.get("YT_CLIENT_ID")
 YT_CLIENT_SECRET = os.environ.get("YT_CLIENT_SECRET")
 YT_REFRESH_TOKEN = os.environ.get("YT_REFRESH_TOKEN")
-CHANNEL_ID = "UCx_eggTH3zOcuLDr2iYayoA"
 STATE_FILE = "state.json"
 
 API = "https://api.telegram.org/bot"
@@ -38,10 +35,10 @@ def save_state(st):
 def commit_state():
     if not GH_TOKEN:
         return
-    p = subprocess.run(["git", "config", "user.name", "github-actions"], capture_output=True)
-    p = subprocess.run(["git", "config", "user.email", "github-actions@github.com"], capture_output=True)
-    p = subprocess.run(["git", "add", STATE_FILE], capture_output=True)
-    p = subprocess.run(["git", "commit", "-m", f"chore: update state {time.strftime('%Y-%m-%d %H:%M:%S')}"], capture_output=True)
+    subprocess.run(["git", "config", "user.name", "github-actions"], capture_output=True)
+    subprocess.run(["git", "config", "user.email", "github-actions@github.com"], capture_output=True)
+    subprocess.run(["git", "add", STATE_FILE], capture_output=True)
+    subprocess.run(["git", "commit", "-m", f"chore: update state {time.strftime('%Y-%m-%d %H:%M:%S')}"], capture_output=True)
     p = subprocess.run(["git", "push", f"https://x-access-token:{GH_TOKEN}@github.com/sameer-sys/video-autopost.git", "main"], capture_output=True)
     if p.returncode == 0:
         log("state.json pushed")
@@ -62,34 +59,8 @@ def tg_get_file(file_id):
     with urllib.request.urlopen(url, timeout=10) as r:
         return json.load(r)
 
-def download_via_mtproto(file_id, dest_path):
-    """Download file up to 2GB using Telethon user session."""
-    from telethon.sync import TelegramClient
-    from telethon.sessions import StringSession
-    
-    client = TelegramClient(StringSession(TELETHON_SESSION), API_ID, API_HASH)
-    client.connect()
-    
-    if not client.is_user_authorized():
-        raise Exception("Telethon session not authorized")
-    
-    # Get file info via Bot API first
-    file_info = tg_get_file(file_id)
-    if not file_info.get("ok"):
-        raise Exception(f"getFile failed: {file_info}")
-    
-    file_path = file_info["result"]["file_path"]
-    file_size = file_info["result"].get("file_size", 0)
-    
-    log(f"Downloading via MTProto: {file_size} bytes")
-    
-    # Download using Telethon
-    client.download_media(file_id, dest_path)
-    client.disconnect()
-    return True
-
 def download_via_bot_api(file_id, dest_path):
-    """Fallback: Bot API (20MB limit)."""
+    """Bot API download (20MB limit)."""
     info = tg_get_file(file_id)
     if not info.get("ok"):
         raise Exception(f"getFile failed: {info}")
@@ -111,7 +82,6 @@ def yt_access_token():
 
 def yt_upload_private(token, video_path, title, desc, tags):
     """Upload to YT as PRIVATE."""
-    # Simple resumable upload - first create metadata
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     body = {
         "snippet": {"title": title, "description": desc, "tags": tags, "categoryId": "22"},
@@ -124,7 +94,6 @@ def yt_upload_private(token, video_path, title, desc, tags):
         if not location:
             raise Exception("No upload URL")
     
-    # Upload video file
     with open(video_path, "rb") as f:
         data = f.read()
     headers = {"Authorization": f"Bearer {token}", "Content-Length": str(len(data))}
@@ -137,16 +106,16 @@ def process_video(chat_id, file_id, caption):
     raw = f"raw_{file_id}.mp4"
     up = f"up_{file_id}.mp4"
     
-    # Download via MTProto (2GB) or fallback to Bot API (20MB)
-    try:
-        download_via_mtproto(file_id, raw)
-        log("Downloaded via MTProto (2GB)")
-    except Exception as e:
-        log(f"MTProto failed: {e}, trying Bot API...")
-        if "20" in str(e) or "too big" in str(e).lower():
-            raise Exception("File >20MB: Bot API limit. MTProto should handle this.")
-        download_via_bot_api(file_id, raw)
-        log("Downloaded via Bot API")
+    # Download via Bot API (20MB limit)
+    file_info = tg_get_file(file_id)
+    if not file_info.get("ok"):
+        raise Exception(f"getFile failed: {file_info}")
+    file_size = file_info["result"].get("file_size", 0)
+    if file_size > 20 * 1024 * 1024:
+        raise Exception(f"File {file_size/1024/1024:.1f}MB > 20MB Bot API limit. Compress video.")
+    
+    download_via_bot_api(file_id, raw)
+    log(f"Downloaded: {file_size} bytes")
     
     # Upscale
     upscale(raw, up)
@@ -173,8 +142,8 @@ def main():
     if not BOT_TOKEN:
         log("TELEGRAM_TOKEN missing")
         sys.exit(1)
-    if not TELETHON_SESSION:
-        log("TELETHON_SESSION missing - run create_session.py locally and add to secrets")
+    if not CHAT_ID:
+        log("CHAT_ID missing")
         sys.exit(1)
     
     state = load_state()
