@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
 MTProto Downloader — uses Telethon user session to download files up to 2GB.
-Run once locally to generate session string, then store in GitHub secrets.
+Run once locally to generate session string.
 """
 import os
 import sys
 from telethon.sync import TelegramClient
 from telethon.sessions import StringSession
 
-# Your credentials (already configured)
+# Your credentials
 API_ID = 36325364
 API_HASH = '5f03f8bfeddec2cf2c1b30c9692b54ff'
 PHONE = '+916303772091'
@@ -16,7 +16,7 @@ PHONE = '+916303772091'
 def create_session():
     """Run this ONCE locally to generate session string."""
     print("Creating Telethon session...")
-    print("Using OTP: 82166")
+    print("Using OTP: 90523")
     
     client = TelegramClient(StringSession(), 36325364, '5f03f8bfeddec2cf2c1b30c9692b54ff')
     client.connect()
@@ -24,7 +24,7 @@ def create_session():
     if not client.is_user_authorized():
         client.send_code_request('+916303772091')
         # Use the provided OTP
-        code = '82166'
+        code = '90523'
         print(f"Using OTP: {code}")
         client.sign_in('+916303772091', code)
     
