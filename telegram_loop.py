@@ -3,7 +3,7 @@
 Posting Bot with MTProto (Telethon) for 2GB downloads.
 Downloads video → upscales → uploads to YT private → replies "✅ Done"
 """
-import json, os, re, sys, subprocess, time, urllib.request
+import json, os, re, sys, subprocess, time, urllib.request, urllib.parse
 from pathlib import Path
 
 # ─── Config ───
@@ -228,5 +228,4 @@ def main():
             time.sleep(5)
 
 if __name__ == "__main__":
-    import urllib.parse
     main()
