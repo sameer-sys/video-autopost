@@ -50,12 +50,16 @@ def build_package(trend=None):
     hook_line = f"{trend} — watch till end 😱"
     desc = (f"{hook_line}\n\n🎬 ToonPop World daily cartoon!\n"
             f"Follow for daily shorts 🍿")
+    # Comma-separated string for YT API; clean hashtags for IG/FB
+    yt_tags = ','.join([t.lstrip('#') for t in TAG_SETS['yt']])
+    ig_hashtags = ' '.join(TAG_SETS['ig'])
+    fb_hashtags = ' '.join(TAG_SETS['fb'])
     return {
         'trend': trend,
         'yt': {'title': title, 'description': desc,
-               'tags': [t.lstrip('#') for t in TAG_SETS['yt']]},
-        'ig': {'caption': f"{hook_line}\n{desc}\n" + ' '.join(TAG_SETS['ig'])},
-        'fb': {'text': f"{hook_line}\n{desc}\n" + ' '.join(TAG_SETS['fb'])},
+               'tags': yt_tags},
+        'ig': {'caption': f"{hook_line}\n{desc}\n{ig_hashtags}"},
+        'fb': {'text': f"{hook_line}\n{desc}\n{fb_hashtags}"},
         'hook_text': hook_line,
     }
 

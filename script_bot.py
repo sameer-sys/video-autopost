@@ -135,23 +135,24 @@ TROPE_TEMPLATES = [
     "song: {food} starts singing a Bollywood song, {c1} is shocked",
 ]
 HOOKS = [
-    "Wait for the ending 😱",
-    "You won't believe what happens next",
-    "This trick changed everything 🤫",
-    "POV: your cat is the CEO of chaos",
-    "She's done this 100 times, always works",
-    "Stop scrolling, watch till end",
-    "Day {n} of cat vs {food}",
+    # Hindi hooks (CEO: video language = Hindi)
+    "एंड तक देखो 😱",
+    "यकीन नहीं होगा आगे क्या हुआ",
+    "ये ट्रिक सब बदल देगी 🤫",
+    "POV: तुम्हारी बिल्ली ही बॉस है",
+    "ये 100 बार कर चुकी, हर बार काम करता",
+    "रुको, एंड तक देखो",
+    "बिल्ली vs {food} डे {n}",
 ]
 TITLES = [
     "{c1} Ne {food} Chura Liya 😱",
-    "Meri Plate Se {food} Kyu Chura Rahi? 😾",
-    "{c1} vs {food} — Who Wins?",
-    "Magic {food} Truck Serves Chaos 🪄",
-    "{c1} Fell Asleep Mid-Lesson 😹",
-    "She Cooked {food}... He Stole It 🍜",
-    "Portal Opens To {w} World ✨",
-    "Detective {c2} Solves {food} Mystery 🕵️",
+    "मेरी प्लेट से {food} क्यों चुराया? 😾",
+    "{c1} vs {food} — कौन जीतेगा?",
+    "जादुई {food} ठेला 🪄",
+    "{c1} सो गया पढ़ाई में 😹",
+    "उसने {food} बनाया... इसने चुरा लिया 🍜",
+    "{w} की दुनिया का पोर्टल ✨",
+    "जासूस {c2} ने {food} का राज़ खोला 🕵️",
 ]
 
 
@@ -207,10 +208,10 @@ def make_script():
         f"{cat} happily eating the {food}, victory smile, sparkling background, 9:16 vertical cartoon, warm light",
     ]
     narration = (
-        f"[0-3s HOOK] {hook}\n"
-        f"[3-15s SETUP] {c1.capitalize()} tiptoes into {w} — the {food} is calling. Paw out. Eyes wide. Owner is asleep.\n"
-        f"[15-25s CHAOS] Grab. Owner wakes. CHASE. Slapstick. Cat vs human around the counter.\n"
-        f"[25-30s PAYOFF] Cat wins. First bite. Portal opens. End on loop frame."
+        f"[0-3s हुक] {hook}\n"
+        f"[3-15s सेटअप] {c1.capitalize()} {w} में दबे पाँव — {food} बुला रहा है। पंजा बाहर। आँखें बड़ी। मालिक सो रहा है।\n"
+        f"[15-25s धमाल] पकड़ा। मालिक जागा। पीछा। धमाल। बिल्ली vs इंसान।\n"
+        f"[25-30s एंड] बिल्ली जीती। पहला निवाला। लूप फ्रेम पर एंड।"
     )
     hashtags = "#shorts #cartoon #toonpopworld #funny #catshorts #viral #hinglish #animation"
     return {

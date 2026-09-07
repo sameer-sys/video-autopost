@@ -166,7 +166,8 @@ def yt_upload(video_path, pkg):
     size = os.path.getsize(video_path)
     meta = json.dumps({
         'snippet': {'title': pkg['title'], 'description': pkg['description'] + '\n\n' + ' '.join(pkg['hashtags']),
-                    'tags': [h.lstrip('#') for h in pkg['hashtags']], 'categoryId': '24'},
+                    'tags': pkg.get('tags', '').split(',') if isinstance(pkg.get('tags'), str)
+                    else [h.lstrip('#') for h in pkg.get('hashtags', [])]},
         'status': {'privacyStatus': 'private', 'selfDeclaredMadeForKids': False}}).encode()
     # PM1: video starts PRIVATE (uploaded at night). A separate morning job flips to public.
     req = urllib.request.Request(
@@ -289,6 +290,15 @@ def process_update(u):
                 st['done'].append(uid)
                 save_state(st)
                 return
+            # PM1 batch loop: video received → send next 3-prompt batch NOW
+            # (before slow upscale/upload — Flow takes time, CEO shouldn't wait).
+            # Videos queue naturally: loop processes each update in order.
+            try:
+                import script_bot as _sb
+                n, _msg = _sb.next_batch(send=True)
+                print(time.strftime('%H:%M:%S'), 'next script batch sent on receipt:', n)
+            except Exception as e:
+                print('next-batch failed (non-fatal):', e)
             upscale(src, hd)
             print(time.strftime('%H:%M:%S'), 'upscaled ok')
             # PM1 Editor: hook overlay + thumbnail (non-fatal — falls back to plain)
@@ -329,9 +339,11 @@ def process_update(u):
                 if _ad.get('yt', {}).get('title'):
                     pkg = {'title': _ad['yt']['title'][:60],
                            'description': _ad['yt'].get('description', pkg['description']),
-                           'captions': pkg.get('captions', []),
                            'hashtags': [h for h in _ad.get('ig', {}).get('caption', '').split()
-                                        if h.startswith('#')][:12] or pkg['hashtags']}
+                                        if h.startswith('#')][:12] or pkg['hashtags'],
+                           'tags': _ad['yt'].get('tags', ''),
+                           'ig_caption': _ad.get('ig', {}).get('caption', ''),
+                           'fb_text': _ad.get('fb', {}).get('text', '')}
                     print('adder package applied:', pkg['title'])
             except Exception as e:
                 print('adder skipped (non-fatal):', e)
@@ -375,13 +387,6 @@ def process_update(u):
             safe_send('✅ Done')
             print(time.strftime('%H:%M:%S'), 'links:', ' | '.join(links))
             print(time.strftime('%H:%M:%S'), 'replied to video', uid)
-            # PM1 batch loop: video posted → auto-send next 3-prompt batch
-            try:
-                import script_bot as _sb
-                n, _msg = _sb.next_batch(send=True)
-                print(time.strftime('%H:%M:%S'), 'next script batch sent:', n)
-            except Exception as e:
-                print('next-batch failed (non-fatal):', e)
             commit_state()   # durable progress after EVERY video
         except Exception as e:
             print('ERROR on update', uid, ':', e)
