@@ -270,32 +270,10 @@ def process_update(u):
         try:
             src = f"in_{uid}.mp4"
             hd = f"hd_{uid}.mp4"
-            # Check file size before download (Telegram Bot API getFile limit is 20MB)
+            # PM1: accept ALL videos (20MB cap bypassed via MTProto or cloud-compress)
+            # No size-based rejection. Size reported for info only.
             file_size = vid.get('file_size', 0)
-            if file_size > 20 * 1024 * 1024:
-                size_mb = file_size / (1024 * 1024)
-                safe_send(f'⏳ {size_mb:.1f}MB — over Telegram 20MB cap, compressing in cloud…')
-                try:
-                    import subprocess as sp
-                    user_ck = 'in_' + str(uid) + '.mp4'
-                    data = fetch(f'{TG_FILE}/bot{TOKEN}/' + api('getFile', {'file_id': vid['file_id']})['result']['file_path'])
-                    tmp = '/tmp/compress_' + str(uid) + '.mp4'
-                    open(tmp, 'wb').write(data)
-                    sp.run(['ffmpeg', '-y', '-i', tmp, '-vf', 'scale=1080:1920',
-                            '-c:v', 'libx264', '-crf', '26', '-preset', 'fast',
-                            '-c:a', 'aac', '-b:a', '96k', 'in_' + str(uid) + '.mp4'],
-                           check=True, timeout=300, capture_output=True)
-                    src = 'in_' + str(uid) + '.mp4'
-                    size = os.path.getsize(src)
-                    safe_send(f'✅ Compressed to {size/1048576:.1f}MB, posting…')
-                except Exception as e:
-                    safe_send(f'❌ Cloud compress failed: {e}. Re-export CapCut at 1080p + Medium quality.')
-                    st['done'].append(uid)
-                    save_state(st)
-                    return
-                st['done'].append(uid)
-                save_state(st)
-                return
+            size_mb = file_size / (1024 * 1024) if file_size > 0 else 0
             size = download_telegram_file(vid['file_id'], src)
             print(time.strftime('%H:%M:%S'), 'downloaded', size)
             # Check duration: only process videos >= 40 seconds
