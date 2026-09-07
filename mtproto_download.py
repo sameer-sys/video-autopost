@@ -11,7 +11,7 @@ from telethon.tl.types import MessageMediaDocument, DocumentAttributeFilename
 
 TELEGRAM_API_ID = os.environ.get('TELEGRAM_API_ID', '36325364')
 TELEGRAM_API_HASH = os.environ.get('TELEGRAM_API_HASH', '5f03f8bfeddec2cf2c1b30c9692b54ff')
-PHONE = os.environ.get('TELEGRAM_PHONE', '+919390913198')
+PHONE = os.environ.get('TELEGRAM_PHONE', '+916303772091')
 
 
 def mtproto_download(file_id, dest):
