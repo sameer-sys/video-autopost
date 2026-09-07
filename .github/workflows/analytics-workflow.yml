@@ -1,7 +1,7 @@
 name: Channel Analytics Bot
 on:
   schedule:
-    - cron: '0 */12 * * *'  # Every 12 hours (2x/day) — PM1 monitors daily
+    - cron: '0 4 * * *'  # Once daily 09:30 IST — PM1 monetization audit
   workflow_dispatch:
     inputs:
       test_email:
