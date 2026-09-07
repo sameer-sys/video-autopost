@@ -21,7 +21,7 @@ jobs:
       - name: Install ffmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Install python dependencies
-        run: pip install requests
+        run: pip install requests telethon
       - name: Run Posting Bot (24/7 loop with platform tricks)
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
