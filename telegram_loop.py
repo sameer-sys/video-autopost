@@ -1,439 +1,232 @@
 #!/usr/bin/env python3
 """
-Posting Bot — MINIMAL WORKING VERSION
-Receives video → downloads → upscales → uploads to YT (private) → replies "✅ Done"
+Posting Bot with MTProto (Telethon) for 2GB downloads.
+Downloads video → upscales → uploads to YT private → replies "✅ Done"
 """
-import json, os, re, sys, subprocess, time, urllib.request, urllib.parse
+import json, os, re, sys, subprocess, time, urllib.request
+from pathlib import Path
 
-import fb_ig
+# ─── Config ───
+BOT_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+API_ID = int(os.environ.get("TELEGRAM_API_ID", "36325364"))
+API_HASH = os.environ.get("TELEGRAM_API_HASH", "5f03f8bfeddec2cf2c1b30c9692b54ff")
+TELETHON_SESSION = os.environ.get("TELETHON_SESSION")
+YT_CLIENT_ID = os.environ.get("YT_CLIENT_ID")
+YT_CLIENT_SECRET = os.environ.get("YT_CLIENT_SECRET")
+YT_REFRESH_TOKEN = os.environ.get("YT_REFRESH_TOKEN")
+CHANNEL_ID = "UCx_eggTH3zOcuLDr2iYayoA"
+STATE_FILE = "state.json"
 
-TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
-CHAT_ID = os.environ.get('CHAT_ID', '')
-YT_CLIENT_ID = os.environ.get('YT_CLIENT_ID', '')
-YT_CLIENT_SECRET = os.environ.get('YT_CLIENT_SECRET', '')
-YT_REFRESH = os.environ.get('YT_REFRESH_TOKEN', '')
-FB_PAGE_TOKEN = os.environ.get('FB_PAGE_TOKEN', '')
-FB_PAGE_ID = os.environ.get('FB_PAGE_ID', '')
-IG_USER_ID = os.environ.get('IG_USER_ID', '')
-IG_TOKEN = os.environ.get('IG_TOKEN', '')
+API = "https://api.telegram.org/bot"
+GH_TOKEN = os.environ.get("GITHUB_TOKEN")
 
-# MTProto (Telethon) for 2GB downloads
-TELETHON_SESSION = os.environ.get('TELETHON_SESSION', '')
-TELEGRAM_API_ID = os.environ.get('TELEGRAM_API_ID', '')
-TELEGRAM_API_HASH = os.environ.get('TELEGRAM_API_HASH', '')
+def log(*a): print(time.strftime("[%H:%M:%S]"), *a, flush=True)
 
-TG_API = os.environ.get('TG_API_BASE', 'https://api.telegram.org').rstrip('/')
-TG_FILE = os.environ.get('TG_FILE_BASE', TG_API).rstrip('/')
-
-STATE_FILE = 'state.json'
-VIDEOS_FILE = 'videos.json'
-
-def log(msg):
-    print(time.strftime('%H:%M:%S'), msg, flush=True)
-
-def api(method, params=None):
-    url = f'{TG_API}/bot{TOKEN}/{method}'
-    req = urllib.request.Request(url + '?' + urllib.parse.urlencode(params or {}))
-    try:
-        with urllib.request.urlopen(req, timeout=90) as r:
-            return json.load(r)
-    except urllib.error.HTTPError as e:
-        body = e.read().decode('utf-8', 'replace')[:200]
-        raise RuntimeError(f'telegram {method}: {e.code} {body}')
-
-def safe_send(text):
-    try:
-        api('sendMessage', {'chat_id': CHAT_ID, 'text': text})
-    except Exception as e:
-        log('sendMessage failed: ' + str(e))
-
-def fetch(url, timeout=180):
-    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read()
+def gh_headers():
+    return {"Authorization": f"token {GH_TOKEN}", "Accept": "application/vnd.github+json"}
 
 def load_state():
-    try:
-        return json.load(open('state.json'))
-    except Exception:
-        return {'offset': 0, 'done': []}
+    if os.path.exists(STATE_FILE):
+        with open(STATE_FILE) as f:
+            return json.load(f)
+    return {"offset": 0, "processed": []}
 
 def save_state(st):
-    json.dump(st, open('state.json', 'w'))
+    with open(STATE_FILE, "w") as f:
+        json.dump(st, f)
 
 def commit_state():
-    gh = os.environ.get('GITHUB_TOKEN', '')
-    if not gh:
+    if not GH_TOKEN:
         return
-    subprocess.run(['git', 'config', 'user.name', 'video-autopost-bot'], capture_output=True)
-    subprocess.run(['git', 'config', 'user.email', 'video-autopost-bot@users.noreply.github.com'], capture_output=True)
-    subprocess.run(['git', 'add', 'state.json', 'videos.json'], capture_output=True)
-    r = subprocess.run(['git', 'diff', '--cached', '--quiet'], capture_output=True)
+    p = subprocess.run(["git", "config", "user.name", "github-actions"], capture_output=True)
+    p = subprocess.run(["git", "config", "user.email", "github-actions@github.com"], capture_output=True)
+    p = subprocess.run(["git", "add", STATE_FILE], capture_output=True)
+    p = subprocess.run(["git", "commit", "-m", f"chore: update state {time.strftime('%Y-%m-%d %H:%M:%S')}"], capture_output=True)
+    p = subprocess.run(["git", "push", f"https://x-access-token:{GH_TOKEN}@github.com/sameer-sys/video-autopost.git", "main"], capture_output=True)
+    if p.returncode == 0:
+        log("state.json pushed")
+
+def tg_get_updates(offset, timeout=30):
+    url = f"{API}{BOT_TOKEN}/getUpdates?offset={offset}&timeout={timeout}&allowed_updates=message"
+    with urllib.request.urlopen(url, timeout=timeout+10) as r:
+        return json.load(r)
+
+def tg_send_message(chat_id, text):
+    url = f"{API}{BOT_TOKEN}/sendMessage"
+    data = json.dumps({"chat_id": chat_id, "text": text}).encode()
+    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+    urllib.request.urlopen(req, timeout=10)
+
+def tg_get_file(file_id):
+    url = f"{API}{BOT_TOKEN}/getFile?file_id={file_id}"
+    with urllib.request.urlopen(url, timeout=10) as r:
+        return json.load(r)
+
+def download_via_mtproto(file_id, dest_path):
+    """Download file up to 2GB using Telethon user session."""
+    from telethon.sync import TelegramClient
+    from telethon.sessions import StringSession
+    
+    client = TelegramClient(StringSession(TELETHON_SESSION), API_ID, API_HASH)
+    client.connect()
+    
+    if not client.is_user_authorized():
+        raise Exception("Telethon session not authorized")
+    
+    # Get file info via Bot API first
+    file_info = tg_get_file(file_id)
+    if not file_info.get("ok"):
+        raise Exception(f"getFile failed: {file_info}")
+    
+    file_path = file_info["result"]["file_path"]
+    file_size = file_info["result"].get("file_size", 0)
+    
+    log(f"Downloading via MTProto: {file_size} bytes")
+    
+    # Download using Telethon
+    client.download_media(file_id, dest_path)
+    client.disconnect()
+    return True
+
+def download_via_bot_api(file_id, dest_path):
+    """Fallback: Bot API (20MB limit)."""
+    info = tg_get_file(file_id)
+    if not info.get("ok"):
+        raise Exception(f"getFile failed: {info}")
+    url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{info['result']['file_path']}"
+    urllib.request.urlretrieve(url, dest_path)
+
+def upscale(inp, out):
+    """Force 1080x1920."""
+    cmd = ["ffmpeg","-y","-i",inp,"-vf","scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2","-c:v","libx264","-preset","fast","-crf","23","-c:a","aac","-b:a","128k",out]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
     if r.returncode != 0:
-        subprocess.run(['git', 'commit', '-m', 'state: ' + time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())], capture_output=True)
-        p = subprocess.run(['git', 'push', f'https://x-access-token:{gh}@github.com/sameer-sys/video-autopost.git', 'main'],
-                           capture_output=True, text=True)
-        if p.returncode == 0:
-            log('state pushed')
-        else:
-            log('state push failed: ' + p.stderr[-200:])
-
-def record_video(uid, file_id, yt_id, fb_id=''):
-    try:
-        hist = json.load(open('videos.json'))
-    except Exception:
-        hist = []
-    hist.append({'uid': uid, 'file_id': file_id, 'date': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
-                 'yt_id': yt_id, 'fb_id': fb_id})
-    json.dump(hist[-500:], open('videos.json', 'w'))
-
-def download_telegram_file(file_id, dest):
-    j = api('getFile', {'file_id': file_id})
-    path = j['result']['file_path']
-    data = fetch(f'https://api.telegram.org/file/bot{TOKEN}/{path}')
-    open(dest, 'wb').write(data)
-    return len(data)
+        raise Exception(f"ffmpeg failed: {r.stderr}")
 
 def yt_access_token():
-    body = urllib.parse.urlencode({
-        'client_id': os.environ['YT_CLIENT_ID'],
-        'client_secret': os.environ['YT_CLIENT_SECRET'],
-        'refresh_token': os.environ['YT_REFRESH_TOKEN'],
-        'grant_type': 'refresh_token'}).encode()
-    req = urllib.request.Request('https://oauth2.googleapis.com/token', data=body,
-                                 headers={'Content-Type': 'application/x-www-form-urlencoded'})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return json.load(r)['access_token']
+    data = urllib.parse.urlencode({"client_id": YT_CLIENT_ID, "client_secret": YT_CLIENT_SECRET, "refresh_token": YT_REFRESH_TOKEN, "grant_type": "refresh_token"}).encode()
+    req = urllib.request.Request("https://oauth2.googleapis.com/token", data=data, headers={"Content-Type": "application/x-www-form-urlencoded"})
+    with urllib.request.urlopen(req) as r:
+        return json.load(r)["access_token"]
 
-def yt_upload(video_path):
-    access = yt_access_token()
-    size = os.path.getsize(video_path)
-    meta = json.dumps({
-        'snippet': {'title': 'ToonPop Short', 'description': 'ToonPop World', 'tags': ['shorts', 'cartoon'], 'categoryId': '24'},
-        'status': {'privacyStatus': 'private', 'selfDeclaredMadeForKids': False}}).encode()
-    req = urllib.request.Request(
-        'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',
-        data=meta, method='POST',
-        headers={'Authorization': 'Bearer ' + yt_access_token(), 'Content-Type': 'application/json',
-                 'X-Upload-Content-Length': str(os.path.getsize(video_path)), 'X-Upload-Content-Type': 'video/mp4'})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        loc = r.headers['Location']
-    data = open(video_path, 'rb').read()
-    for attempt in range(4):
-        try:
-            req = urllib.request.Request(loc, data=data, method='PUT',
-                                         headers={'Content-Type': 'video/mp4'})
-            with urllib.request.urlopen(req, timeout=600) as r:
-                return json.load(r)['id']
-        except Exception as e:
-            time.sleep(5 * (attempt + 1))
-    raise RuntimeError('upload failed')
+def yt_upload_private(token, video_path, title, desc, tags):
+    """Upload to YT as PRIVATE."""
+    # Simple resumable upload - first create metadata
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    body = {
+        "snippet": {"title": title, "description": desc, "tags": tags, "categoryId": "22"},
+        "status": {"privacyStatus": "private", "selfDeclaredMadeForKids": False}
+    }
+    url = "https://www.googleapis.com/upload/youtube/v3/videos?part=snippet,status&uploadType=resumable"
+    req = urllib.request.Request(url, data=json.dumps(body).encode(), headers=headers, method="POST")
+    with urllib.request.urlopen(req) as r:
+        location = r.headers.get("Location")
+        if not location:
+            raise Exception("No upload URL")
+    
+    # Upload video file
+    with open(video_path, "rb") as f:
+        data = f.read()
+    headers = {"Authorization": f"Bearer {token}", "Content-Length": str(len(data))}
+    req = urllib.request.Request(location, data=data, headers=headers, method="PUT")
+    with urllib.request.urlopen(req, timeout=600) as r:
+        return json.load(r)
 
-def download_telegram_file(file_id, dest):
-    j = api('getFile', {'file_id': file_id})
-    path = j['result']['file_path']
-    data = fetch(f'https://api.telegram.org/file/bot{TOKEN}/{path}')
-    open(dest, 'wb').write(data)
-    return len(data)
-
-def upscale(src, dst):
-    subprocess.run(['ffmpeg', '-y', '-i', src,
-                    '-vf', 'scale=1080:1920:flags=lanczos,setsar=1,fps=30',
-                    '-c:v', 'libx264', '-preset', 'medium', '-crf', '23',
-                    '-c:a', 'aac', '-b:a', '192k', dst, '-loglevel', 'error'],
-                   check=True, timeout=600)
-
-def load_state():
+def process_video(chat_id, file_id, caption):
+    log(f"Processing video {file_id}")
+    raw = f"raw_{file_id}.mp4"
+    up = f"up_{file_id}.mp4"
+    
+    # Download via MTProto (2GB) or fallback to Bot API (20MB)
     try:
-        return json.load(open('state.json'))
-    except Exception:
-        return {'offset': 0, 'done': []}
-
-def save_state(st):
-    json.dump(st, open('state.json', 'w'))
-
-def commit_state():
-    gh = os.environ.get('GITHUB_TOKEN', '')
-    if not gh:
-        return
-    subprocess.run(['git', 'config', 'user.name', 'video-autopost-bot'], capture_output=True)
-    subprocess.run(['git', 'config', 'user.email', 'video-autopost-bot@users.noreply.github.com'], capture_output=True)
-    subprocess.run(['git', 'add', 'state.json', 'videos.json'], capture_output=True)
-    r = subprocess.run(['git', 'diff', '--cached', '--quiet'], capture_output=True)
-    if r.returncode != 0:
-        subprocess.run(['git', 'commit', '-m', 'state: ' + time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())], capture_output=True)
-        p = subprocess.run(['git', 'push', f'https://x-access-token:{gh}@github.com/sameer-sys/video-autopost.git', 'main'],
-                           capture_output=True, text=True)
-
-def api(method, params=None):
-    url = f'https://api.telegram.org/bot{TOKEN}/{method}'
-    req = urllib.request.Request(url + '?' + urllib.parse.urlencode(params or {}))
-    try:
-        with urllib.request.urlopen(req, timeout=90) as r:
-            return json.load(r)
-    except urllib.error.HTTPError as e:
-        body = e.read().decode('utf-8', 'replace')[:200]
-        raise RuntimeError(f'telegram {method}: {e.code} {body}')
-
-def safe_send(text):
-    try:
-        api('sendMessage', {'chat_id': CHAT_ID, 'text': text})
+        download_via_mtproto(file_id, raw)
+        log("Downloaded via MTProto (2GB)")
     except Exception as e:
-        print('sendMessage failed:', e)
-
-def log(msg):
-    print(time.strftime('%H:%M:%S'), msg, flush=True)
-
-def process_update(u):
-    st = load_state()
-    uid = u['update_id']
-    m = u.get('message') or u.get('channel_post') or {}
-    st['offset'] = uid + 1
-    txt = (m.get('text') or '').strip()
-    if txt and not txt.startswith('/'):
-        log('text message: ' + txt[:50])
-        save_state(st)
-        return
-    vid = m.get('video')
-    doc = m.get('document')
-    if doc and str(doc.get('mime_type', '')).startswith('video/'):
-        vid = doc
-    if vid and uid not in st['done']:
-        try:
-            src = f"in_{uid}.mp4"
-            hd = f"hd_{uid}.mp4"
-            size = download_telegram_file(vid['file_id'], src)
-            log('downloaded ' + str(size))
-            dur = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
-                                  '-of', 'default=noprint_wrappers=1:nokey=1', src],
-                               capture_output=True, text=True)
-            try:
-                seconds = float(dur.stdout.strip())
-            except:
-                seconds = 0
-            if seconds > 45:
-                safe_send('Video too long (' + str(int(seconds)) + 's). Max 45 seconds.')
-                st['done'].append(uid)
-                save_state(st)
-                return
-            upscale(src, hd)
-            log('upscaled ok')
-            vid_id = yt_upload(hd)
-            st['last_video_id'] = vid_id
-            st['done'].append(uid)
-            save_state(st)
-            record_video(uid, vid['file_id'], vid_id)
-            commit_state()
-            safe_send('✅ Done')
-            log('replied to video', uid)
-        except Exception as e:
-            log('ERROR:', e)
-            st['done'].append(uid)
-            save_state(st)
-            try:
-                safe_send('Processing failed: ' + str(e)[:100])
-            except:
-                pass
-        finally:
-            for f in (src, 'hd_' + str(uid) + '.mp4'):
-                if os.path.exists(f):
-                    os.remove(f)
-        save_state(st)
-
-def upscale(src, dst):
-    subprocess.run(['ffmpeg', '-y', '-i', src,
-                    '-vf', 'scale=1080:1920:flags=lanczos,setsar=1,fps=30',
-                    '-c:v', 'libx264', '-preset', 'medium', '-crf', '23',
-                    '-c:a', 'aac', '-b:a', '192k', dst, '-loglevel', 'error'],
-                   check=True, timeout=600)
-
-def yt_access_token():
-    body = urllib.parse.urlencode({
-        'client_id': os.environ['YT_CLIENT_ID'],
-        'client_secret': os.environ['YT_CLIENT_SECRET'],
-        'refresh_token': os.environ['YT_REFRESH_TOKEN'],
-        'grant_type': 'refresh_token'}).encode()
-    req = urllib.request.Request('https://oauth2.googleapis.com/token', data=body,
-                                 headers={'Content-Type': 'application/x-www-form-urlencoded'})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return json.load(r)['access_token']
-
-def yt_upload(video_path):
-    access = yt_access_token()
-    size = os.path.getsize(video_path)
-    meta = json.dumps({
-        'snippet': {'title': 'ToonPop Short', 'description': 'ToonPop World', 'tags': ['shorts', 'cartoon'], 'categoryId': '24'},
-        'status': {'privacyStatus': 'private', 'selfDeclaredMadeForKids': False}}).encode()
-    req = urllib.request.Request(
-        'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',
-        data=meta, method='POST',
-        headers={'Authorization': 'Bearer ' + yt_access_token(), 'Content-Type': 'application/json',
-                 'X-Upload-Content-Length': str(os.path.getsize(video_path)), 'X-Upload-Content-Type': 'video/mp4'})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        loc = r.headers['Location']
-    data = open(video_path, 'rb').read()
-    for attempt in range(4):
-        try:
-            req = urllib.request.Request(loc, data=data, method='PUT',
-                                         headers={'Content-Type': 'video/mp4'})
-            with urllib.request.urlopen(req, timeout=600) as r:
-                return json.load(r)['id']
-        except Exception as e:
-            time.sleep(5 * (attempt + 1))
-    raise RuntimeError('upload failed')
-
-def api(method, params=None):
-    url = f'https://api.telegram.org/bot{TOKEN}/{method}'
-    req = urllib.request.Request(url + '?' + urllib.parse.urlencode(params or {}))
-    try:
-        with urllib.request.urlopen(req, timeout=90) as r:
-            return json.load(r)
-    except urllib.error.HTTPError as e:
-        body = e.read().decode('utf-8', 'replace')[:200]
-        raise RuntimeError(f'telegram {method}: {e.code} {body}')
-
-def safe_send(text):
-    try:
-        api('sendMessage', {'chat_id': CHAT_ID, 'text': text})
-    except Exception as e:
-        print('sendMessage failed:', e)
-
-def load_state():
-    try:
-        return json.load(open('state.json'))
-    except Exception:
-        return {'offset': 0, 'done': []}
-
-def save_state(st):
-    json.dump(st, open('state.json', 'w'))
-
-def log(msg):
-    print(time.strftime('%H:%M:%S'), msg, flush=True)
-
-def process_update(u):
-    st = load_state()
-    uid = u['update_id']
-    m = u.get('message') or u.get('channel_post') or {}
-    st['offset'] = uid + 1
-    vid = m.get('video')
-    doc = m.get('document')
-    if doc and str(doc.get('mime_type', '')).startswith('video/'):
-        vid = doc
-    if vid and uid not in st['done']:
-        try:
-            src = f"in_{uid}.mp4"
-            hd = f"hd_{uid}.mp4"
-            size = download_telegram_file(vid['file_id'], src)
-            log('downloaded ' + str(size))
-            dur = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
-                                  '-of', 'default=noprint_wrappers=1:nokey=1', src],
-                               capture_output=True, text=True)
-            try:
-                seconds = float(dur.stdout.strip())
-            except:
-                seconds = 0
-            if seconds > 45:
-                api('sendMessage', {'chat_id': CHAT_ID, 'text': 'Video too long. Max 45 seconds.'})
-                return
-            upscale(src, f"hd_{u['update_id']}.mp4")
-            log('upscaled ok')
-            vid_id = yt_upload(f"hd_{u['update_id']}.mp4")
-            api('sendMessage', {'chat_id': CHAT_ID, 'text': '✅ Done'})
-        except Exception as e:
-            print('ERROR:', e)
-        finally:
-            for f in (f"in_{u['update_id']}.mp4", f"hd_{u['update_id']}.mp4"):
-                if os.path.exists(f):
-                    os.remove(f)
-
-def upscale(src, dst):
-    subprocess.run(['ffmpeg', '-y', '-i', src,
-                    '-vf', 'scale=1080:1920:flags=lanczos,setsar=1,fps=30',
-                    '-c:v', 'libx264', '-preset', 'medium', '-crf', '23',
-                    '-c:a', 'aac', '-b:a', '192k', dst, '-loglevel', 'error'],
-                   check=True, timeout=600)
-
-def yt_access_token():
-    body = urllib.parse.urlencode({
-        'client_id': os.environ['YT_CLIENT_ID'],
-        'client_secret': os.environ['YT_CLIENT_SECRET'],
-        'refresh_token': os.environ['YT_REFRESH_TOKEN'],
-        'grant_type': 'refresh_token'}).encode()
-    req = urllib.request.Request('https://oauth2.googleapis.com/token', data=body,
-                                 headers={'Content-Type': 'application/x-www-form-urlencoded'})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return json.load(r)['access_token']
-
-def yt_upload(video_path):
-    access = yt_access_token()
-    size = os.path.getsize(video_path)
-    meta = json.dumps({
-        'snippet': {'title': 'ToonPop Short', 'description': 'ToonPop World', 'tags': ['shorts', 'cartoon'], 'categoryId': '24'},
-        'status': {'privacyStatus': 'private', 'selfDeclaredMadeForKids': False}}).encode()
-    req = urllib.request.Request(
-        'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',
-        data=meta, method='POST',
-        headers={'Authorization': 'Bearer ' + access, 'Content-Type': 'application/json',
-                 'X-Upload-Content-Length': str(os.path.getsize(video_path)), 'X-Upload-Content-Type': 'video/mp4'})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        loc = r.headers['Location']
-    data = open(video_path, 'rb').read()
-    for attempt in range(4):
-        try:
-            req = urllib.request.Request(loc, data=data, method='PUT',
-                                         headers={'Content-Type': 'video/mp4'})
-            with urllib.request.urlopen(req, timeout=600) as r:
-                return json.load(r)['id']
-        except Exception as e:
-            time.sleep(5 * (attempt + 1))
-    raise RuntimeError('upload failed')
-
-def download_telegram_file(file_id, dest):
-    j = api('getFile', {'file_id': file_id})
-    path = j['result']['file_path']
-    data = fetch(f'https://api.telegram.org/file/bot{TOKEN}/{path}')
-    open(dest, 'wb').write(data)
-    return len(data)
-
-def api(method, params=None):
-    url = f'https://api.telegram.org/bot{TOKEN}/{method}'
-    req = urllib.request.Request(url + '?' + urllib.parse.urlencode(params or {}))
-    try:
-        with urllib.request.urlopen(req, timeout=90) as r:
-            return json.load(r)
-    except urllib.error.HTTPError as e:
-        body = e.read().decode('utf-8', 'replace')[:200]
-        raise RuntimeError(f'telegram {method}: {e.code} {body}')
-
-def fetch(url, timeout=180):
-    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read()
-
-def load_state():
-    try:
-        return json.load(open('state.json'))
-    except Exception:
-        return {'offset': 0, 'done': []}
-
-def save_state(st):
-    json.dump(st, open('state.json', 'w'))
+        log(f"MTProto failed: {e}, trying Bot API...")
+        if "20" in str(e) or "too big" in str(e).lower():
+            raise Exception("File >20MB: Bot API limit. MTProto should handle this.")
+        download_via_bot_api(file_id, raw)
+        log("Downloaded via Bot API")
+    
+    # Upscale
+    upscale(raw, up)
+    log("Upscaled to 1080x1920")
+    
+    # Upload to YT private
+    token = yt_access_token()
+    title = caption[:100] if caption else f"ToonPop Short {time.strftime('%m/%d')}"
+    desc = f"{caption}\n\n#Shorts #ToonPopWorld" if caption else "#Shorts #ToonPopWorld"
+    tags = ["Shorts", "ToonPop", "Cartoon", "Hindi", "Funny"]
+    
+    result = yt_upload_private(token, up, title, desc, tags)
+    video_id = result.get("id")
+    log(f"Uploaded to YT PRIVATE: {video_id}")
+    
+    # Cleanup
+    for f in [raw, up]:
+        try: os.remove(f)
+        except: pass
+    
+    return video_id
 
 def main():
-    if not all([TOKEN, CHAT_ID, YT_CLIENT_ID, YT_CLIENT_SECRET, YT_REFRESH]):
-        print('MISSING_ENV'); sys.exit(0)
-    log('loop started')
-    last_beat = time.time()
+    if not BOT_TOKEN:
+        log("TELEGRAM_TOKEN missing")
+        sys.exit(1)
+    if not TELETHON_SESSION:
+        log("TELETHON_SESSION missing - run create_session.py locally and add to secrets")
+        sys.exit(1)
+    
+    state = load_state()
+    offset = state.get("offset", 0)
+    processed = set(state.get("processed", []))
+    
+    log(f"Bot started. Offset: {offset}")
+    
     while True:
         try:
-            st = load_state()
-            j = api('getUpdates', {'offset': st['offset'], 'timeout': 25,
-                                  'allowed_updates': '["message", "channel_post"]'})
-            for u in j.get('result', []):
-                process_update(u)
+            updates = tg_get_updates(offset)
+            if not updates.get("ok"):
+                log(f"getUpdates failed: {updates}")
+                time.sleep(5)
+                continue
+            
+            for upd in updates.get("result", []):
+                offset = upd["update_id"] + 1
+                msg = upd.get("message")
+                if not msg or "video" not in msg:
+                    continue
+                
+                chat_id = msg["chat"]["id"]
+                file_id = msg["video"]["file_id"]
+                caption = msg.get("caption", "")
+                
+                if file_id in processed:
+                    continue
+                
+                try:
+                    vid = process_video(chat_id, file_id, caption)
+                    tg_send_message(chat_id, f"✅ Done! YouTube PRIVATE: {vid}\nWill go public at 09:00 IST")
+                    processed.add(file_id)
+                    if len(processed) > 1000:
+                        processed = set(list(processed)[-500:])
+                    state["offset"] = offset
+                    state["processed"] = list(processed)
+                    save_state(state)
+                    commit_state()
+                except Exception as e:
+                    log(f"Error: {e}")
+                    tg_send_message(chat_id, f"❌ Failed: {e}")
+            
+            if not updates["result"]:
+                time.sleep(2)
+        
+        except KeyboardInterrupt:
+            break
         except Exception as e:
-            print('loop error:', e)
-            time.sleep(10)
+            log(f"Loop error: {e}")
+            time.sleep(5)
 
-if __name__ == '__main__':
+if __name__ == "__main__":
+    import urllib.parse
     main()
