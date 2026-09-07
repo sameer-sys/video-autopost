@@ -76,10 +76,22 @@ def upscale(inp, out):
         raise Exception(f"ffmpeg failed: {r.stderr}")
 
 def yt_access_token():
-    data = urllib.parse.urlencode({"client_id": YT_CLIENT_ID, "client_secret": YT_CLIENT_SECRET, "refresh_token": YT_REFRESH_TOKEN, "grant_type": "refresh_token"}).encode()
-    req = urllib.request.Request("https://oauth2.googleapis.com/token", data=data, headers={"Content-Type": "application/x-www-form-urlencoded"})
-    with urllib.request.urlopen(req) as r:
-        return json.load(r)["access_token"]
+    """Refresh the YouTube OAuth access token. Raises with Google's actual
+    error body on failure (e.g. invalid_grant / invalid_client) instead of
+    the opaque "HTTP Error 400: Bad Request" urllib used to give."""
+    resp = requests.post(
+        "https://oauth2.googleapis.com/token",
+        data={
+            "client_id": YT_CLIENT_ID,
+            "client_secret": YT_CLIENT_SECRET,
+            "refresh_token": YT_REFRESH_TOKEN,
+            "grant_type": "refresh_token",
+        },
+        timeout=30,
+    )
+    if resp.status_code != 200:
+        raise Exception(f"YouTube token refresh failed: HTTP {resp.status_code} - {resp.text}")
+    return resp.json()["access_token"]
 
 def yt_upload_private(token, video_path, title, desc, tags):
     """Upload to YT as PRIVATE using resumable upload (fixes HTTP 400)."""
