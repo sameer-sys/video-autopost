@@ -289,15 +289,9 @@ def process_update(u):
                 st['done'].append(uid)
                 save_state(st)
                 return
-            # PM1 batch loop: video received → send next 3-prompt batch NOW
-            # (before slow upscale/upload — Flow takes time, CEO shouldn't wait).
-            # Videos queue naturally: loop processes each update in order.
-            try:
-                import script_bot as _sb
-                n, _msg = _sb.next_batch(send=True)
-                print(time.strftime('%H:%M:%S'), 'next script batch sent on receipt:', n)
-            except Exception as e:
-                print('next-batch failed (non-fatal):', e)
+            # OLD BOT MODE: skip new batch loop, editor hook, adder package — use original simple flow
+            # Just download (no size reject), upscale, upload with default package, reply, commit
+            # (No editor/ad batch/post hooks — back to original behavior as user demanded)
             upscale(src, hd)
             print(time.strftime('%H:%M:%S'), 'upscaled ok')
             # PM1 Editor: hook overlay + thumbnail (non-fatal — falls back to plain)
