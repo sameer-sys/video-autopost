@@ -17,6 +17,11 @@ FB_PAGE_ID = os.environ.get('FB_PAGE_ID', '')
 IG_USER_ID = os.environ.get('IG_USER_ID', '')
 IG_TOKEN = os.environ.get('IG_TOKEN', '')
 
+# MTProto (Telethon) for 2GB downloads
+TELETHON_SESSION = os.environ.get('TELETHON_SESSION', '')
+TELEGRAM_API_ID = os.environ.get('TELEGRAM_API_ID', '')
+TELEGRAM_API_HASH = os.environ.get('TELEGRAM_API_HASH', '')
+
 TG_API = os.environ.get('TG_API_BASE', 'https://api.telegram.org').rstrip('/')
 TG_FILE = os.environ.get('TG_FILE_BASE', TG_API).rstrip('/')
 
