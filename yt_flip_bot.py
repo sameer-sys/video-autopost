@@ -1,18 +1,13 @@
 #!/usr/bin/env python3
 """
-YT Morning Public Flip Bot (PM1 → posting trick)
-Finds all PRIVATE videos uploaded in the last 18 hours from this channel,
-flips them to PUBLIC at 09:00 IST.
-Trick: post at night (private) → morning (public) = higher initial push from YT.
-
-ENV: YT_CLIENT_ID, YT_CLIENT_SECRET, YT_REFRESH_TOKEN, TELEGRAM_TOKEN, CHAT_ID
+YT Morning Public Flip — flips PRIVATE videos to PUBLIC at 09:00 IST daily.
+Called by yt-flip-workflow.yml (cron 09:00 IST).
 """
 import json, os, datetime, urllib.request, urllib.parse
 
 STATE_FILE = 'yt_flip_state.json'
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 CHAT_ID = os.environ.get('CHAT_ID', '')
-
 
 def yt_token():
     body = urllib.parse.urlencode({
@@ -25,19 +20,14 @@ def yt_token():
     with urllib.request.urlopen(req, timeout=30) as r:
         return json.load(r)['access_token']
 
-
 def yt_get(path, access):
     url = 'https://www.googleapis.com/youtube/v3/' + path
     req = urllib.request.Request(url, headers={'Authorization': f'Bearer {access}'})
     with urllib.request.urlopen(req, timeout=60) as r:
         return json.load(r)
 
-
 def yt_put(access, vid_id, privacy):
-    meta = json.dumps({
-        'id': vid_id,
-        'status': {'privacyStatus': privacy}
-    }).encode()
+    meta = json.dumps({'id': vid_id, 'status': {'privacyStatus': privacy}}).encode()
     req = urllib.request.Request(
         'https://www.googleapis.com/upload/youtube/v3/videos?part=status',
         data=meta, method='PUT',
@@ -45,21 +35,17 @@ def yt_put(access, vid_id, privacy):
     with urllib.request.urlopen(req, timeout=60) as r:
         return json.load(r)
 
-
 def tg_send(msg):
-    if not (TOKEN and CHAT_ID):
+    if not (os.environ.get('TELEGRAM_TOKEN') and os.environ.get('CHAT_ID')):
         return
-    url = f'https://api.telegram.org/bot{TOKEN}/sendMessage?' + urllib.parse.urlencode(
-        {'chat_id': CHAT_ID, 'text': msg})
+    url = f'https://api.telegram.org/bot{os.environ["TELEGRAM_TOKEN"]}/sendMessage?' + urllib.parse.urlencode(
+        {'chat_id': os.environ['CHAT_ID'], 'text': msg})
     with urllib.request.urlopen(url, timeout=30) as r:
         json.load(r)
-
 
 def main():
     print('=== YT Flip: private -> public ===')
     access = yt_token()
-    cutoff = (datetime.datetime.now(datetime.timezone.utc)
-              - datetime.timedelta(hours=18)).strftime('%Y-%m-%dT%H:%M:%SZ')
     # Get channel uploads playlist
     ch = yt_get('channels?part=contentDetails&mine=true', access)
     up_id = ch['items'][0]['contentDetails']['relatedPlaylists']['uploads']
@@ -73,7 +59,9 @@ def main():
         page = j.get('nextPageToken')
         if not page:
             break
-    # Filter to last 18h, private only
+    # Filter last 18h, private only
+    cutoff = (datetime.datetime.now(datetime.timezone.utc)
+              - datetime.timedelta(hours=18)).strftime('%Y-%m-%dT%H:%M:%SZ')
     chunks = [','.join(ids[i:i+50]) for i in range(0, len(ids), 50)]
     to_flip = []
     for chunk in chunks:
@@ -83,7 +71,7 @@ def main():
             priv = it.get('status', {}).get('privacyStatus', '')
             if priv == 'private' and pub >= cutoff:
                 to_flip.append((it['id'], it['snippet']['title']))
-    st = json.load(open(STATE_FILE)) if os.path.exists(STATE_FILE) else {}
+    st = json.load(open('yt_flip_state.json')) if os.path.exists('yt_flip_state.json') else {}
     done_today = st.get('flipped_today', [])
     new_flips = [(v, t) for v, t in to_flip if v not in done_today]
     flipped = 0
@@ -96,12 +84,12 @@ def main():
             print(f'flip failed {vid}: {e}')
     st['flipped_today'] = [v for v, _ in to_flip]
     st['last_run'] = datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ')
-    json.dump(st, open(STATE_FILE, 'w'), indent=2)
+    json.dump(st, open('yt_flip_state.json', 'w'), indent=2)
     if new_flips:
         titles = '\n'.join(f'  - {t[:60]}' for _, t in new_flips)
-        tg_send(f'[PM1/YT Flip] 🔓 {flipped} video(s) flipped private->public\n{titles}')
+        tg_send(f'[YT Flip] 🔓 {flipped} video(s) flipped private->public\n{titles}')
     print(f'Done. {flipped} flipped.')
 
-
 if __name__ == '__main__':
+    import datetime, os
     main()
