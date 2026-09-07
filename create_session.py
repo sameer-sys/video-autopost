@@ -16,15 +16,13 @@ PHONE = '+916303772091'
 def create_session():
     """Run this ONCE locally to generate session string."""
     print("Creating Telethon session...")
-    print("Using OTP: 98349")
     
     client = TelegramClient(StringSession(), 36325364, '5f03f8bfeddec2cf2c1b30c9692b54ff')
     client.connect()
     
     if not client.is_user_authorized():
         client.send_code_request('+916303772091')
-        # Use the provided OTP
-        code = '98349'
+        code = input('Enter the OTP code you received: ')
         print(f"Using OTP: {code}")
         client.sign_in('+916303772091', code)
     
