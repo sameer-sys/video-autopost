@@ -36,6 +36,9 @@ jobs:
           IG_TOKEN: ${{ secrets.IG_TOKEN }}
           TG_API_BASE: ${{ secrets.TG_API_BASE }}
           TG_FILE_BASE: ${{ secrets.TG_FILE_BASE }}
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELETHON_SESSION: ${{ secrets.TELETHON_SESSION }}
         run: python3 telegram_loop.py
       - name: Commit state back
         run: |
