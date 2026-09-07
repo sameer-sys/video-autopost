@@ -11,6 +11,9 @@ import json, os, re, sys, subprocess, time, urllib.request, urllib.parse, html
 import fb_ig
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
+# Local Bot API server (2GB downloads) when TG_API_BASE is set, else cloud (20MB cap)
+TG_API = os.environ.get('TG_API_BASE', 'https://api.telegram.org').rstrip('/')
+TG_FILE = os.environ.get('TG_FILE_BASE', TG_API).rstrip('/')
 CHAT_ID = os.environ.get('CHAT_ID', '')
 GEMINI_KEY = os.environ.get('GEMINI_KEY', '')
 YT_CLIENT_ID = os.environ.get('YT_CLIENT_ID', '')
@@ -26,7 +29,7 @@ PLACEHOLDER_CAPTION = ('ðŸŽ¬ New ToonPop World drop! Follow for daily cartoons ð
                        '#cartoon #animation #reels #shorts #funny #toonpopworld')
 
 def api(method, params=None, files=None):
-    url = f'https://api.telegram.org/bot{TOKEN}/{method}'
+    url = f'{TG_API}/bot{TOKEN}/{method}'
     if files:
         args = ['curl', '-s']
         for k, v in (params or {}).items():
@@ -93,7 +96,7 @@ def record_video(uid, file_id, yt_id, fb_id=''):
 def download_telegram_file(file_id, dest):
     j = api('getFile', {'file_id': file_id})
     path = j['result']['file_path']
-    data = fetch('https://api.telegram.org/file/bot' + TOKEN + '/' + path)
+    data = fetch(f'{TG_FILE}/bot{TOKEN}/{path}')
     open(dest, 'wb').write(data)
     return len(data)
 
@@ -275,7 +278,7 @@ def process_update(u):
                 try:
                     import subprocess as sp
                     user_ck = 'in_' + str(uid) + '.mp4'
-                    data = fetch('https://api.telegram.org/file/bot' + TOKEN + '/' + api('getFile', {'file_id': vid['file_id']})['result']['file_path'])
+                    data = fetch(f'{TG_FILE}/bot{TOKEN}/' + api('getFile', {'file_id': vid['file_id']})['result']['file_path'])
                     tmp = '/tmp/compress_' + str(uid) + '.mp4'
                     open(tmp, 'wb').write(data)
                     sp.run(['ffmpeg', '-y', '-i', tmp, '-vf', 'scale=1080:1920',
