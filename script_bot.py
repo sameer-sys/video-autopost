@@ -203,9 +203,9 @@ def make_script():
     w = random.choice(WORLDS)
     c1 = "the orange cat"
     prompts = [
-        f"{cat} tiptoeing toward a plate of {food} on a {w}, sneaky look, paw reaching out, 9:16 vertical cartoon, bright colors",
-        f"{cat} grabbing the {food} and running while owner chases, slapstick kitchen chase, 9:16 vertical cartoon, fast funny motion",
-        f"{cat} happily eating the {food}, victory smile, sparkling background, 9:16 vertical cartoon, warm light",
+        f"{cat} tiptoeing toward a plate of {food} on a {w}, sneaky look, paw reaching out, cat whispers in Hindi 'मोमोज़ मेरे हैं!', 9:16 vertical cartoon, bright colors",
+        f"{cat} grabbing the {food} and running while owner chases shouting in Hindi 'रुक! वापस कर!', slapstick kitchen chase, 9:16 vertical cartoon, fast funny motion",
+        f"{cat} happily eating the {food}, victory smile, cat says in Hindi 'मज़ा आ गया!', sparkling background, 9:16 vertical cartoon, warm light",
     ]
     narration = (
         f"[0-3s हुक] {hook}\n"
