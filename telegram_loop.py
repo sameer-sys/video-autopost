@@ -271,7 +271,9 @@ def process_update(u):
             file_size = vid.get('file_size', 0)
             if file_size > 20 * 1024 * 1024:
                 size_mb = file_size / (1024 * 1024)
-                safe_send('❌ File too large (' + str(round(size_mb, 1)) + 'MB). Max 20MB. Please compress the video.')
+                safe_send('❌ %.1fMB — over Telegram 20MB cap, I cannot even download it.\n'
+                          'Fix in CapCut (30 sec): Export → Resolution 1080x1920 → '
+                          'Frame rate 30 → Bitrate 8 Mbps → Export → resend here.' % size_mb)
                 st['done'].append(uid)
                 save_state(st)
                 return
