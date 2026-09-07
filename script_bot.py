@@ -198,7 +198,30 @@ def make_script():
     # - ONE action per clip, <40 words, no dialogue, no on-screen text requests
     # - same character anchor every clip ("same orange tabby cat")
     # - 9:16 vertical, simple setting, no multi-scene jumps inside one clip
-    cat = "same orange tabby cartoon cat"
+    # PM1: full cast from YOUR channel niche — never orange-cat-only.
+    # Character follows the trend/trope; same anchor repeated all 3 clips.
+    CAST = {
+        'momo': "same orange tabby cartoon cat",
+        'maggi': "same orange tabby cartoon cat",
+        'portal': "same orange tabby cartoon cat",
+        'detective': "same cartoon detective parrot",
+        'chor': "same cartoon officer cat chasing a naughty dog",
+        'police': "same cartoon officer cat chasing a naughty dog",
+        'future': "same orange tabby cartoon cat from year 2050",
+        'party': "same naughty baby sister cartoon cat",
+        'sleep': "same genius baby cartoon cat",
+        'race': "same orange tabby cartoon cat on a tiny bike",
+        'song': "same cute white persian cartoon cat",
+        'pizza': "same orange tabby cartoon cat",
+        'magic': "same orange tabby cartoon cat",
+        'challenge': "same orange tabby cartoon cat",
+    }
+    trend_kw = ''
+    try:
+        trend_kw = json.load(open('trend_state.json')).get('history', [])[-1].get('keyword', '')
+    except Exception:
+        pass
+    cat = CAST.get(trend_kw) or random.choice(list(CAST.values()))
     food = random.choice(FOODS).lower()
     w = random.choice(WORLDS)
     c1 = "the orange cat"
