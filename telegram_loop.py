@@ -13,6 +13,10 @@ CHAT_ID = os.environ.get("CHAT_ID")
 YT_CLIENT_ID = os.environ.get("YT_CLIENT_ID")
 YT_CLIENT_SECRET = os.environ.get("YT_CLIENT_SECRET")
 YT_REFRESH_TOKEN = os.environ.get("YT_REFRESH_TOKEN")
+FB_PAGE_ID = os.environ.get("FB_PAGE_ID")
+FB_PAGE_TOKEN = os.environ.get("FB_PAGE_TOKEN")
+IG_USER_ID = os.environ.get("IG_USER_ID")
+IG_TOKEN = os.environ.get("IG_TOKEN")
 STATE_FILE = "state.json"
 
 API = "https://api.telegram.org/bot"
@@ -93,83 +97,76 @@ def yt_access_token():
         raise Exception(f"YouTube token refresh failed: HTTP {resp.status_code} - {resp.text}")
     return resp.json()["access_token"]
 
-def yt_upload_private(token, video_path, title, desc, tags):
-    """Upload to YT as PRIVATE using resumable upload (fixes HTTP 400)."""
+def fb_upload_video(token, video_path, caption):
+    """Upload video to Facebook Page as Reel."""
     if not os.path.isfile(video_path):
         raise FileNotFoundError(f"Video file not found: {video_path}")
     
     file_size = os.path.getsize(video_path)
-    mime_type, _ = mimetypes.guess_type(video_path)
-    mime_type = mime_type or "video/mp4"
     
-    metadata = {
-        "snippet": {
-            "title": (title or "")[:100],
-            "description": (desc or "")[:5000],
-            "tags": tags or [],
-            "categoryId": "22",
-        },
-        "status": {
-            "privacyStatus": "private",
-            "selfDeclaredMadeForKids": False,
-        },
+    # Step 1: Start upload session
+    start_url = f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}/video_reels"
+    start_data = {
+        "access_token": token,
+        "upload_phase": "start",
+        "file_size": file_size,
     }
+    start_resp = requests.post(start_url, data=start_data, timeout=30)
+    if start_resp.status_code != 200:
+        raise RuntimeError(f"FB start upload failed: HTTP {start_resp.status_code} - {start_resp.text}")
     
-    # Step 1: Initiate resumable upload
-    init_headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json; charset=UTF-8",
-        "X-Upload-Content-Type": mime_type,
-        "X-Upload-Content-Length": str(file_size),
+    start_json = start_resp.json()
+    video_id = start_json.get("video_id")
+    upload_url = start_json.get("upload_url")
+    
+    if not video_id or not upload_url:
+        raise RuntimeError(f"FB start failed: {start_resp.text}")
+    
+    # Step 2: Transfer video
+    with open(video_path, "rb") as f:
+        transfer_resp = requests.post(upload_url, data=f, headers={"Content-Type": "video/mp4"}, timeout=600)
+    if transfer_resp.status_code != 200:
+        raise RuntimeError(f"FB transfer failed: HTTP {transfer_resp.status_code} - {transfer_resp.text}")
+    
+    # Step 3: Finish with caption
+    finish_url = f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}/video_reels"
+    finish_data = {
+        "access_token": token,
+        "upload_phase": "finish",
+        "video_id": video_id,
+        "description": caption[:1000] if caption else "ToonPop Short #Shorts",
     }
-    params = {"uploadType": "resumable", "part": "snippet,status"}
+    finish_resp = requests.post(finish_url, data=finish_data, timeout=30)
+    if finish_resp.status_code != 200:
+        raise RuntimeError(f"FB finish failed: HTTP {finish_resp.status_code} - {finish_resp.text}")
     
-    init_resp = requests.post(
-        "https://www.googleapis.com/upload/youtube/v3/videos",
-        params=params,
-        headers=init_headers,
-        data=json.dumps(metadata),
-        timeout=30,
-    )
-    if init_resp.status_code != 200:
-        raise RuntimeError(f"Failed to initiate resumable upload: HTTP {init_resp.status_code} - {init_resp.text}")
+    return video_id
+
+def ig_upload_video(token, video_path, caption):
+    """Upload video to Instagram as Reel using media container."""
+    if not os.path.isfile(video_path):
+        raise FileNotFoundError(f"Video file not found: {video_path}")
     
-    upload_url = init_resp.headers.get("Location")
-    if not upload_url:
-        raise RuntimeError(f"No upload URL returned by YouTube. Response headers: {dict(init_resp.headers)}")
+    # For IG Reels, we create a media container with the video URL
+    # Since we don't have a public URL, we need to upload the video first
+    # For simplicity, we'll use the media container approach with a temporary file URL
+    # But IG requires the video to be accessible via URL
+    # For now, we'll use a workaround: upload to FB first, then cross-post
+    # Or use the media publish endpoint
     
-    # Step 2: PUT video bytes to session URL
-    upload_headers = {
-        "Content-Type": mime_type,
-        "Content-Length": str(file_size),
-    }
+    # Step 1: Create container with video
+    # For IG Reels, we need to upload the video to a reachable location first
+    # Since we don't have hosting, we'll use the same video file
+    # The IG API requires a publicly accessible video URL
     
-    max_retries = 3
-    last_error = None
-    for attempt in range(1, max_retries + 1):
-        with open(video_path, "rb") as f:
-            upload_resp = requests.put(
-                upload_url,
-                headers=upload_headers,
-                data=f,
-                timeout=(30, 600),
-            )
-        if upload_resp.status_code in (200, 201):
-            try:
-                resp_json = upload_resp.json()
-            except Exception:
-                resp_json = {}
-            video_id = resp_json.get("id") if isinstance(resp_json, dict) else None
-            if not video_id:
-                raise RuntimeError(f"Upload succeeded but no video ID in response: {upload_resp.text}")
-            return video_id
-        last_error = f"HTTP {upload_resp.status_code} - {upload_resp.text}"
-        if upload_resp.status_code >= 500 and attempt < max_retries:
-            time.sleep(2 ** attempt)
-            continue
-        break
+    # For now, we'll use the same approach as FB but with IG endpoint
+    # This requires the video to be publicly accessible
+    # We'll need to host the video somewhere first
     
-    raise RuntimeError(f"Video upload failed: {last_error}")
+    # For now, let's just use the media container creation with a placeholder
+    # In production, you'd need to host the video file publicly
+    
+    raise NotImplementedError("IG upload requires public video URL - needs hosting solution")
 
 def process_video(chat_id, file_id, caption):
     log(f"Processing video {file_id}")
@@ -191,22 +188,34 @@ def process_video(chat_id, file_id, caption):
     upscale(raw, up)
     log("Upscaled to 1080x1920")
     
-    # Upload to YT private
-    token = yt_access_token()
-    title = caption[:100] if caption else f"ToonPop Short {time.strftime('%m/%d')}"
-    desc = f"{caption}\n\n#Shorts #ToonPopWorld" if caption else "#Shorts #ToonPopWorld"
-    tags = ["Shorts", "ToonPop", "Cartoon", "Hindi", "Funny"]
+    results = {}
     
-    result = yt_upload_private(token, up, title, desc, tags)
-    video_id = result.get("id")
-    log(f"Uploaded to YT PRIVATE: {video_id}")
+    # Upload to Facebook
+    if FB_PAGE_TOKEN and FB_PAGE_ID:
+        try:
+            fb_id = fb_upload_video(FB_PAGE_TOKEN, up, caption)
+            results["fb"] = fb_id
+            log(f"Uploaded to FB: {fb_id}")
+        except Exception as e:
+            log(f"FB upload failed: {e}")
+            results["fb_error"] = str(e)
+    
+    # Upload to Instagram
+    if IG_TOKEN and IG_USER_ID:
+        try:
+            ig_id = ig_upload_video(IG_TOKEN, up, caption)
+            results["ig"] = ig_id
+            log(f"Uploaded to IG: {ig_id}")
+        except Exception as e:
+            log(f"IG upload failed: {e}")
+            results["ig_error"] = str(e)
     
     # Cleanup
     for f in [raw, up]:
         try: os.remove(f)
         except: pass
     
-    return video_id
+    return results
 
 def main():
     if not BOT_TOKEN:
@@ -255,8 +264,17 @@ def main():
                     continue
                 
                 try:
-                    vid = process_video(chat_id, file_id, caption)
-                    tg_send_message(chat_id, f"✅ Done! YouTube PRIVATE: {vid}\nWill go public at 09:00 IST")
+                    results = process_video(chat_id, file_id, caption)
+                    msg_parts = ["✅ Done!"]
+                    if results.get("fb"):
+                        msg_parts.append(f"FB: {results['fb']}")
+                    if results.get("ig"):
+                        msg_parts.append(f"IG: {results['ig']}")
+                    if results.get("fb_error"):
+                        msg_parts.append(f"FB Error: {results['fb_error']}")
+                    if results.get("ig_error"):
+                        msg_parts.append(f"IG Error: {results['ig_error']}")
+                    tg_send_message(chat_id, "\n".join(msg_parts))
                     processed.add(file_id)
                     if len(processed) > 1000:
                         processed = set(list(processed)[-500:])
