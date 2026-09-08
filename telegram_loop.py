@@ -212,6 +212,17 @@ def main():
         log("CHAT_ID missing")
         sys.exit(1)
     
+    # Startup diagnostic: verify YouTube OAuth works before waiting on Telegram,
+    # and report the result straight to Telegram so we don't need a test video
+    # or GitHub Actions log access to see what's wrong.
+    try:
+        _tok = yt_access_token()
+        log(f"YouTube token refresh OK at startup (len={len(_tok)})")
+        tg_send_message(CHAT_ID, "\u2705 Startup check: YouTube auth OK, bot is ready.")
+    except Exception as e:
+        log(f"YouTube token refresh FAILED at startup: {e}")
+        tg_send_message(CHAT_ID, f"\u26a0\ufe0f Startup check: YouTube auth FAILED - {e}")
+
     state = load_state()
     offset = state.get("offset", 0)
     processed = set(state.get("processed", []))
