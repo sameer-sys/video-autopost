@@ -155,7 +155,11 @@ def yt_upload_private(token, video_path, title, desc, tags):
                 timeout=(30, 600),
             )
         if upload_resp.status_code in (200, 201):
-            video_id = upload_resp.json().get("id")
+            try:
+                resp_json = upload_resp.json()
+            except Exception:
+                resp_json = {}
+            video_id = resp_json.get("id") if isinstance(resp_json, dict) else None
             if not video_id:
                 raise RuntimeError(f"Upload succeeded but no video ID in response: {upload_resp.text}")
             return video_id
