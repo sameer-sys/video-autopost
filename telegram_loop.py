@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Posting Bot — Bot API version (20MB limit, works reliably).
-Downloads video → upscales → uploads to YT private → replies "✅ Done"
+Posting Bot — Bot API version (20MB limit).
+Downloads video → upscales → uploads to YT private, FB Reels, IG Reels → replies "✅ Done"
 """
 import json, os, re, sys, subprocess, time, urllib.request, urllib.parse, mimetypes
 import requests
@@ -80,9 +80,7 @@ def upscale(inp, out):
         raise Exception(f"ffmpeg failed: {r.stderr}")
 
 def yt_access_token():
-    """Refresh the YouTube OAuth access token. Raises with Google's actual
-    error body on failure (e.g. invalid_grant / invalid_client) instead of
-    the opaque "HTTP Error 400: Bad Request" urllib used to give."""
+    """Refresh YouTube OAuth access token."""
     resp = requests.post(
         "https://oauth2.googleapis.com/token",
         data={
@@ -96,6 +94,82 @@ def yt_access_token():
     if resp.status_code != 200:
         raise Exception(f"YouTube token refresh failed: HTTP {resp.status_code} - {resp.text}")
     return resp.json()["access_token"]
+
+def yt_upload_private(token, video_path, title, desc, tags):
+    """Upload to YT as PRIVATE using resumable upload."""
+    if not os.path.isfile(video_path):
+        raise FileNotFoundError(f"Video file not found: {video_path}")
+    
+    file_size = os.path.getsize(video_path)
+    mime_type, _ = mimetypes.guess_type(video_path)
+    mime_type = mime_type or "video/mp4"
+    
+    metadata = {
+        "snippet": {
+            "title": (title or "")[:100],
+            "description": (desc or "")[:5000],
+            "tags": tags or [],
+            "categoryId": "22",
+        },
+        "status": {
+            "privacyStatus": "private",
+            "selfDeclaredMadeForKids": False,
+        },
+    }
+    
+    init_headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json; charset=UTF-8",
+        "X-Upload-Content-Type": mime_type,
+        "X-Upload-Content-Length": str(file_size),
+    }
+    params = {"uploadType": "resumable", "part": "snippet,status"}
+    
+    init_resp = requests.post(
+        "https://www.googleapis.com/upload/youtube/v3/videos",
+        params=params,
+        headers=init_headers,
+        data=json.dumps(metadata),
+        timeout=30,
+    )
+    if init_resp.status_code != 200:
+        raise RuntimeError(f"Failed to initiate resumable upload: HTTP {init_resp.status_code} - {init_resp.text}")
+    
+    upload_url = init_resp.headers.get("Location")
+    if not upload_url:
+        raise RuntimeError(f"No upload URL returned by YouTube. Response headers: {dict(init_resp.headers)}")
+    
+    upload_headers = {
+        "Content-Type": mime_type,
+        "Content-Length": str(file_size),
+    }
+    
+    max_retries = 3
+    last_error = None
+    for attempt in range(1, max_retries + 1):
+        with open(video_path, "rb") as f:
+            upload_resp = requests.put(
+                upload_url,
+                headers=upload_headers,
+                data=f,
+                timeout=(30, 600),
+            )
+        if upload_resp.status_code in (200, 201):
+            try:
+                resp_json = upload_resp.json()
+            except Exception:
+                resp_json = {}
+            video_id = resp_json.get("id") if isinstance(resp_json, dict) else None
+            if not video_id:
+                raise RuntimeError(f"Upload succeeded but no video ID in response: {upload_resp.text}")
+            return video_id
+        last_error = f"HTTP {upload_resp.status_code} - {upload_resp.text}"
+        if upload_resp.status_code >= 500 and attempt < max_retries:
+            time.sleep(2 ** attempt)
+            continue
+        break
+    
+    raise RuntimeError(f"Video upload failed: {last_error}")
 
 def fb_upload_video(token, video_path, caption):
     """Upload video to Facebook Page as Reel."""
@@ -147,26 +221,15 @@ def ig_upload_video(token, video_path, caption):
     if not os.path.isfile(video_path):
         raise FileNotFoundError(f"Video file not found: {video_path}")
     
-    # For IG Reels, we create a media container with the video URL
-    # Since we don't have a public URL, we need to upload the video first
-    # For simplicity, we'll use the media container approach with a temporary file URL
-    # But IG requires the video to be accessible via URL
-    # For now, we'll use a workaround: upload to FB first, then cross-post
-    # Or use the media publish endpoint
+    # For IG Reels, create media container with video URL
+    # IG requires publicly accessible video URL - we need hosting
+    # For now, use FB cross-post or implement proper hosting
     
-    # Step 1: Create container with video
-    # For IG Reels, we need to upload the video to a reachable location first
-    # Since we don't have hosting, we'll use the same video file
-    # The IG API requires a publicly accessible video URL
+    # Option: Use FB cross-post to IG (if IG account linked to FB page)
+    # This requires: IG account linked to FB page, and proper permissions
     
-    # For now, we'll use the same approach as FB but with IG endpoint
-    # This requires the video to be publicly accessible
-    # We'll need to host the video somewhere first
-    
-    # For now, let's just use the media container creation with a placeholder
-    # In production, you'd need to host the video file publicly
-    
-    raise NotImplementedError("IG upload requires public video URL - needs hosting solution")
+    # For now, skip IG until proper hosting is set up
+    raise NotImplementedError("IG upload needs public video URL - implement hosting or FB cross-post")
 
 def process_video(chat_id, file_id, caption):
     log(f"Processing video {file_id}")
@@ -189,6 +252,20 @@ def process_video(chat_id, file_id, caption):
     log("Upscaled to 1080x1920")
     
     results = {}
+    
+    # Upload to YouTube (primary - was working)
+    try:
+        token = yt_access_token()
+        title = caption[:100] if caption else f"ToonPop Short {time.strftime('%m/%d')}"
+        desc = f"{caption}\n\n#Shorts #ToonPopWorld" if caption else "#Shorts #ToonPopWorld"
+        tags = ["Shorts", "ToonPop", "Cartoon", "Hindi", "Funny"]
+        
+        yt_id = yt_upload_private(token, up, title, desc, tags)
+        results["yt"] = yt_id
+        log(f"Uploaded to YT PRIVATE: {yt_id}")
+    except Exception as e:
+        log(f"YT upload failed: {e}")
+        results["yt_error"] = str(e)
     
     # Upload to Facebook
     if FB_PAGE_TOKEN and FB_PAGE_ID:
@@ -225,17 +302,15 @@ def main():
         log("CHAT_ID missing")
         sys.exit(1)
     
-    # Startup diagnostic: verify YouTube OAuth works before waiting on Telegram,
-    # and report the result straight to Telegram so we don't need a test video
-    # or GitHub Actions log access to see what's wrong.
+    # Startup diagnostic: verify YouTube OAuth works
     try:
         _tok = yt_access_token()
         log(f"YouTube token refresh OK at startup (len={len(_tok)})")
-        tg_send_message(CHAT_ID, "\u2705 Startup check: YouTube auth OK, bot is ready.")
+        tg_send_message(CHAT_ID, "✅ Startup check: YouTube auth OK, bot is ready.")
     except Exception as e:
         log(f"YouTube token refresh FAILED at startup: {e}")
-        tg_send_message(CHAT_ID, f"\u26a0\ufe0f Startup check: YouTube auth FAILED - {e}")
-
+        tg_send_message(CHAT_ID, f"⚠️ Startup check: YouTube auth FAILED - {e}")
+    
     state = load_state()
     offset = state.get("offset", 0)
     processed = set(state.get("processed", []))
@@ -266,10 +341,14 @@ def main():
                 try:
                     results = process_video(chat_id, file_id, caption)
                     msg_parts = ["✅ Done!"]
+                    if results.get("yt"):
+                        msg_parts.append(f"YT: {results['yt']}")
                     if results.get("fb"):
                         msg_parts.append(f"FB: {results['fb']}")
                     if results.get("ig"):
                         msg_parts.append(f"IG: {results['ig']}")
+                    if results.get("yt_error"):
+                        msg_parts.append(f"YT Error: {results['yt_error']}")
                     if results.get("fb_error"):
                         msg_parts.append(f"FB Error: {results['fb_error']}")
                     if results.get("ig_error"):
