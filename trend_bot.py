@@ -50,6 +50,16 @@ def yt_token():
     with urllib.request.urlopen(req, timeout=30) as r:
         return json.load(r)['access_token']
 
+def yt_api_get(url, access):
+    """GET a YouTube Data API URL, raising with the response body on error."""
+    req = urllib.request.Request(url, headers={'Authorization': f'Bearer {access}'})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        body = e.read().decode('utf-8', 'replace')[:500]
+        raise RuntimeError(f'YT API {e.code}: {body}')
+
 def yt_search(access, query, days=7, n=15):
     after = (datetime.datetime.now(datetime.timezone.utc)
              - datetime.timedelta(days=days)).strftime('%Y-%m-%dT%H:%M:%SZ')
@@ -57,9 +67,7 @@ def yt_search(access, query, days=7, n=15):
         'q': query, 'part': 'snippet', 'order': 'viewCount',
         'publishedAfter': after, 'maxResults': n, 'type': 'video',
         'videoDuration': 'short'})
-    req = urllib.request.Request(url, headers={'Authorization': f'Bearer {access}'})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        j = json.load(r)
+    j = yt_api_get(url, access)
     return [(it['snippet']['title'], it['id'].get('videoId', ''))
             for it in j.get('items', [])]
 
@@ -67,9 +75,7 @@ def yt_popular(access, n=15):
     url = 'https://www.googleapis.com/youtube/v3/videos?' + urllib.parse.urlencode({
         'part': 'snippet,statistics', 'chart': 'mostPopular',
         'videoCategoryId': '1', 'maxResults': n, 'regionCode': 'IN'})
-    req = urllib.request.Request(url, headers={'Authorization': f'Bearer {access}'})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        j = json.load(r)
+    j = yt_api_get(url, access)
     out = []
     for it in j.get('items', []):
         out.append((it['snippet']['title'],
@@ -117,7 +123,11 @@ def main():
             niche_titles += [t for t, _ in yt_search(access, q, 7, 15)]
         except Exception:
             pass
-    pop = yt_popular(access, 15)
+    pop = []
+    try:
+        pop = yt_popular(access, 15)
+    except Exception as e:
+        print('yt_popular failed (continuing):', e)
     pop_titles = [t for t, _ in pop]
     mine = own_titles(access)
 
