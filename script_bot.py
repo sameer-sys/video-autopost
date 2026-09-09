@@ -145,38 +145,32 @@ def make_script():
         'hook': hook,
         'food': food,
         'world': w,
+        'cat': cat,
         'prompts': prompts,
         'narration': narration,
         'hashtags': hashtags,
     }
 
-CLIPS = [
-    ("1/3", "0-10s", "हुक", "HOOK"),
-    ("2/3", "10-20s", "धमाल", "CHASE"),
-    ("3/3", "20-30s", "एंड", "VICTORY"),
-]
+def simple_name(cat):
+    """Short header name for the character (e.g. 'cat one', 'parrot one')."""
+    if 'parrot' in cat:
+        return 'parrot one'
+    if 'baby' in cat:
+        return 'baby cat one'
+    if 'officer' in cat:
+        return 'officer cat one'
+    if 'future' in cat:
+        return 'future cat one'
+    if 'persian' in cat:
+        return 'white cat one'
+    if 'brother' in cat:
+        return 'brother cat one'
+    return 'cat one'
 
 def render_clip_message(script, clip_index):
-    """Render one 10s clip message (one per video) for Telegram."""
-    num, t_range, label, tag = CLIPS[clip_index]
-    lines = [
-        f"🎬 {script['title']}",
-        f"Clip {num} ({t_range}) — {label}",
-        "",
-        f"📹 Flow Prompt ({tag}):",
-        script['prompts'][clip_index],
-    ]
-    return '\n'.join(lines)
-
-def render_summary_message(script):
-    """Render narration + hashtags summary for Telegram."""
-    lines = [
-        f"📝 30s Narration (beat-by-beat):",
-        script['narration'],
-        "",
-        f"Hashtags: {script['hashtags']}",
-    ]
-    return '\n'.join(lines)
+    """Simple per-scene message: header name + scene number + prompt."""
+    header = simple_name(script['cat'])
+    return f"{header}\nscene {clip_index + 1}: {script['prompts'][clip_index]}"
 
 def tg_send(text):
     if not (TOKEN and CHAT_ID):
@@ -219,14 +213,10 @@ def main():
     for i in range(3):
         msg = render_clip_message(script, i)
         ok = tg_send(msg)
-        print(f'Sent clip {i+1}/3: {script["title"]} ok={ok}')
+        print(f'Sent scene {i+1}/3: {script["title"]} ok={ok}')
         time.sleep(1)
     
-    # Send narration + hashtags summary
-    ok = tg_send(render_summary_message(script))
-    print(f'Sent narration+hashtags ok={ok}')
-    
-    print('Done — 3 prompts + narration sent to Telegram.')
+    print('Done — 3 scene prompts sent to Telegram.')
 
 if __name__ == '__main__':
     import datetime
