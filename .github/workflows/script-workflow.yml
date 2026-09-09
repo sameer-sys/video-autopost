@@ -1,0 +1,39 @@
+name: Script Bot (On-Demand)
+
+on:
+  workflow_dispatch:
+    inputs:
+      trigger:
+        description: 'Triggered by Trend Bot after topic pick'
+        required: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: script-pipeline
+  cancel-in-progress: false
+
+jobs:
+  script:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run Script Bot
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: python3 script_bot.py
+      - name: Commit script state
+        run: |
+          git config user.name "video-autopost-bot"
+          git config user.email "video-autopost-bot@users.noreply.github.com"
+          git add script_state.json || true
+          git diff --cached --quiet || git commit -m "script: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git pull --rebase origin main || true
+          git push origin main || true
